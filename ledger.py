@@ -1,0 +1,714 @@
+#!/usr/bin/env python
+"""Command-line, double-entry accounting in python.
+
+Inspired by John Wiegley's Ledger:
+  http://www.ledger-cli.org/
+"""
+import argparse
+import sys
+import dateutil.parser
+from collections import defaultdict
+
+# {{{ Deal with columns of text
+
+def join_columns(seq_of_seq_of_strings, separator=' '):
+    result = []
+    for row in seq_of_seq_of_strings:
+        result += [separator.join(row)]
+    return result
+
+def justify_columns(seq_of_seq_of_strings, justification):
+    """Justify strings in sequence of sequences so each column has equal length.
+
+    Characters in justification indicate left ('L') or right ('R')
+    justification. Anything beside l/r/L/R isn't justified.
+
+    Take a sequence of sequences of strings. Make sure strings in nth
+    position of inner sequence are same length by right-justifying
+    them.
+
+    Assumes each inner sequence has same # of components."""
+
+    ## XXX: *just_col* need rewriting to remove duplicate code
+    if (len(seq_of_seq_of_strings) == 0):
+        return seq_of_seq_of_strings
+    for column in range(len(justification)):
+        if justification[column].upper() == "L":
+            seq_of_seq_of_strings = ljust_column(seq_of_seq_of_strings, column)
+        if justification[column].upper() == "R":
+            seq_of_seq_of_strings = rjust_column(seq_of_seq_of_strings, column)
+    return seq_of_seq_of_strings
+
+
+def rjust_columns(seq_of_seq_of_strings):
+    """Right-justify strings in sequence of sequences so each column has equal length.
+
+    Take a sequence of sequences of strings. Make sure strings in nth
+    position of inner sequence are same length by right-justifying
+    them.
+
+    Assumes each inner sequence has same # of components."""
+
+    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
+    if (len(seq_of_seq_of_strings) == 0):
+        return seq_of_seq_of_strings
+    for column in range(len(seq_of_seq_of_strings[0])):
+        seq_of_seq_of_strings = rjust_column(seq_of_seq_of_strings, column)
+    return seq_of_seq_of_strings
+
+def ljust_columns(seq_of_seq_of_strings):
+    """Left-justify strings in sequence of sequences so each column has equal length.
+
+    Take a sequence of sequences of strings. Make sure strings in nth
+    position of inner sequence are same length by left-justifying
+    them.
+
+    Assumes each inner sequence has same # of components."""
+
+    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
+    if (len(seq_of_seq_of_strings) == 0):
+        return seq_of_seq_of_strings
+    for column in range(len(seq_of_seq_of_strings[0])):
+        seq_of_seq_of_strings = ljust_column(seq_of_seq_of_strings, column)
+    return seq_of_seq_of_strings
+
+def rjust_column(seq_of_seq_of_strings, column):
+    """Right-justify strings in sequence of sequences so all values in column have equal length.
+
+    Take a sequence of sequences of strings. Make sure strings in nth
+    position of inner sequences are same length by right-justifying
+    them.
+
+    Assumes each inner sequence has same # of components."""
+
+    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
+    if (len(seq_of_seq_of_strings) == 0):
+        return seq_of_seq_of_strings
+    # else
+    ## Make copy where inner sequences are lists, so we can modify them
+    seq_of_seq_of_strings = [list(row) for row in seq_of_seq_of_strings]
+    max_len = max([len(row[column]) for row in seq_of_seq_of_strings])
+    for row in range(len(seq_of_seq_of_strings)):
+        seq_of_seq_of_strings[row][column] = seq_of_seq_of_strings[row][column].rjust(max_len)
+    return seq_of_seq_of_strings
+
+def ljust_column(seq_of_seq_of_strings, column):
+    """Left-justify strings in sequence of sequences so all values in column have equal length.
+
+    Take a sequence of sequences of strings. Make sure strings in nth
+    position of inner sequences are same length by left-justifying
+    them.
+
+    Assumes each inner sequence has same # of components."""
+
+    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
+    if (len(seq_of_seq_of_strings) == 0):
+        return seq_of_seq_of_strings
+    # else
+    ## Make copy where inner sequences are lists, so we can modify them
+    seq_of_seq_of_strings = [list(row) for row in seq_of_seq_of_strings]
+    max_len = max([len(row[column]) for row in seq_of_seq_of_strings])
+    for row in range(len(seq_of_seq_of_strings)):
+        seq_of_seq_of_strings[row][column] = seq_of_seq_of_strings[row][column].ljust(max_len)
+    return seq_of_seq_of_strings
+
+
+# }}}
+
+# {{{ Units / Currencies
+
+### XXX: This code isn't good for anything besides AUD at the moment.
+### Maybe not even good for AUD. Should really be using a the decimal
+### module for this.
+
+DEFAULT_UNITS = 'AUD'
+
+def parse_amount(amount_string):
+    "Convert amount_string to a unit/currency and signed quantity."
+
+    quantity = int(round(float(amount_string.translate(None, "$,")) * 100.0))
+
+    return {'units': 'AUD',
+            'quantity': quantity}
+
+def parse_amount_adjusting_sign(account_string, amount_string):
+    "Parse amount_string, adjust sign depending on account_string."
+
+    quantity = int(round(float(amount_string.translate(None, "$,")) * 100.0))
+    quantity *= sign_account(account_string)
+
+    return {'units': 'AUD',
+            'quantity': quantity}
+
+def format_amount(amount):
+    "Format unit/currency quantity as a string."
+
+    units = amount['units']
+    quantity = amount['quantity']
+
+    if units == 'AUD':
+        if quantity > 0:
+            return "${0:,.2f}".format(quantity/100.0)
+        else:
+            return "-${0:,.2f}".format(-quantity/100.0)
+    #else:
+    raise Exception('Unknown unit in format_amount:', units)
+
+def format_single_unit_balance(balances):
+    if len(balances.keys()) == 1:
+        return format_amount(balances.values()[0])
+    # else
+    raise ValueError("format_single_unit_balance: balances is not single unit/ccy:", balances)
+
+# }}}
+
+def root_account_name(account_string):
+    """Return regularised version of root account's name'.
+
+    Basically, we convert to upper case, but we also make sure that
+    root name is a plural if the singular was used instead."""
+    root = account_string.split(':')[0]
+    root = root.upper()
+    if (root == "EXPENSE"):
+        return "EXPENSES"
+    if (root == "ASSET"):
+        return "ASSETS"
+    if (root == "LIABILITY"):
+        return "LIABILITIES"
+    return root
+
+def sign_account(account_string):
+    """Do debits increase or decrease the account?
+
+    This is a simplified way of checking that debits and credits in a
+    transaction balance. For the unsimplified version, see:
+
+      http://en.wikipedia.org/wiki/Debits_and_credits
+
+    All we really need to do is work out whether or not postings in a
+    transaction balance in a double-entry bookkeeping sense. Instead
+    of using 'debit' and 'credit' amounts, we let postings change
+    accounts by a positive or negative amounts, and test that the
+    postings in a transaction balance by checking that they sum to
+    zero after their amounts are converted using a using a sign that
+    depends on the account.
+
+    For example the postings:
+
+      Assets: +1, Income: +1
+
+    balance since the 'Assets' and 'Income' accounts have opposite signs
+    (+1, and -1) here. Similarly, the postings:
+
+      Assets: -1, Expenses: +1
+
+    balance because the Assets and Expenses accounts have the same
+    signs (+1, and +1)."""
+
+    account_sign_dict = {'ASSETS': 1,
+                         'LIABILITIES' : -1,
+                         'INCOME' : -1,
+                         'EXPENSES' : 1,
+                         'EQUITY': -1}
+    return account_sign_dict[root_account_name(account_string)]
+
+def is_valid_account_string(account_string):
+    """Does account_string represent a valid date?
+
+    Basically, is root account one of
+    equity/income/expense/asset/liability?"""
+    try:
+        sign_account(account_string)
+        return True
+    except KeyError:
+        pass
+    return False
+
+def balance_amounts(transaction):
+    "Return list of transaction's balances in each unit"
+    result = []
+    balances = defaultdict(int)
+    for posting in transaction['postings']:
+        sign = sign_account(posting['account'])
+        units = posting['amount']['units']
+        quantity = posting['amount']['quantity']
+        balances[units] += quantity * sign
+    for unit in balances.keys():
+        result += [{'units': unit, 'quantity': balances[unit]}]
+    return result
+
+def is_balanced(transaction):
+    "Is transaction balanced?"
+    balances = balance_amounts(transaction)
+    for balance in balances:
+        if balance['quantity'] != 0:
+            return False
+    return True
+
+def print_transactions(transactions):
+    """Print list of transactions.
+
+    Output should be in a form this code or John Wiegly's ledger can read."""
+    for transaction in transactions:
+        print transaction['date'], transaction['description']
+        for posting in transaction['postings']:
+            print ' ', posting['account'], ' ', format_amount(posting['amount'])
+        print
+
+def ensure_balanced(transactions):
+    "Complain and exit if transaction isn't balanced."
+    for transaction in transactions:
+        if (not is_balanced(transaction)):
+            sys.stderr.write("Line %d: Transaction dated: '%s', description: '%s' is imbalanced.\n" %
+                             (transaction['line'],transaction['date'],transaction['description']))
+            for amount in balance_amounts(transaction):
+                if amount['quantity'] != 0:
+                    sys.stderr.write("Imbalance amount: %s.\n" % format_amount(amount))
+            sys.stderr.write("Exiting.\n")
+            sys.exit(-1)
+
+def ensure_date_sorted(transactions):
+    "Make sure transactions are date sorted. Exit if not."
+    if len(transactions) < 2:
+        return
+    last_date = transactions[0]['date']
+    for transaction in transactions[1:]:
+        ## XXX: Should throw an exception rather than exiting completely.
+        if transaction['date'] < last_date:
+            sys.stderr.write("Line %d: date: '%s' description: '%s' is not in date order.\n" %
+                             (transaction['line'],transaction['date'],transaction['description']))
+            sys.stderr.write("Exiting.\n")
+            sys.exit(-1)
+        last_date = transaction['date']
+
+def is_prefix_of(list1, list2):
+    "Is list1 a prefix of list2?"
+    return list1 == list2[:len(list1)]
+
+def contains_account(account_string1, account_string2):
+    "Does account_string1 name a parent of, or same a/c as, account_string2?"
+    regular1 = account_string_components(account_string1)['regular']
+    regular2 = account_string_components(account_string2)['regular']
+    return is_prefix_of(regular1, regular2)
+
+def affects(transaction_or_posting, account_string):
+    "Does transaction_or_posting affect named account?"
+    if transaction_or_posting.has_key('postings'):
+        return any([contains_account(account_string, p['account']) for p in transaction_or_posting['postings']])
+    elif transaction_or_posting.has_key('account'):
+        return contains_account(account_string, transaction_or_posting['account'])
+    raise ValueError("Invalid transaction_or_posting in affects:", transaction_or_posting)
+
+def filter_by_date(transactions, first_date = None, last_date = None):
+    if first_date:
+        first_date = dateutil.parser.parse(first_date)
+        transactions = [t for t in transactions if dateutil.parser.parse(t['date']) >= first_date]
+    if last_date:
+        last_date = dateutil.parser.parse(last_date)
+        transactions = [t for t in transactions if dateutil.parser.parse(t['date']) <= last_date]
+    return transactions
+
+def filter_by_account(transactions_or_postings, account_string):
+    "Return transactions affecting named account?"
+    return [t_or_p for t_or_p in transactions_or_postings if affects(t_or_p, account_string)]
+
+# {{{ journal file parsing
+
+def is_valid_date(date_string):
+    "Does date_string represent a valid date?"
+    try:
+        dateutil.parser.parse(date_string)
+        return True
+    except ValueError:
+        pass
+    return False
+
+def reformat_date(date_string):
+    "Convert known valid date string, to iso-formatted date."
+    return dateutil.parser.parse(date_string).isoformat()[:10]
+
+def parse_first_line(line_number, line):
+    """parse string containing first line of a transaction.
+
+    Format of these lines is date-token description or description."""
+    line = line.strip()
+    split = line.split()
+    date_string = split[0]
+    description_string = line[len(date_string):].strip()
+
+    if not is_valid_date(date_string):
+        ## XXX: Should throw an exception rather than exiting completely.
+        sys.stderr.write("Line %d: Invalid date: '%s' in transaction '%s'\n" %
+                         (line_number, date_string, line))
+        sys.stderr.write("Exiting.\n")
+        sys.exit(-1)
+    return {'line': line_number,
+            'date': reformat_date(date_string),
+            'description': description_string}
+
+def parse_posting(line_number, line, adjust_sign):
+    """parse string containing a posting.
+
+    Format is account-name amount-with-unit/ccy.
+    For example: "Expenses:Petrol $10"."""
+    line = line.strip()
+    split = line.split()
+    account_string = split[0]
+    amount_string = split[1].translate(None, "$")
+
+    if not is_valid_account_string(account_string):
+        sys.stderr.write("Line %d: invalid account string: '%s'.\n" %
+                         (line_number, account_string))
+        sys.stderr.write("Exiting.\n")
+        sys.exit(-1)
+
+    if adjust_sign:
+        amount = parse_amount_adjusting_sign(account_string, amount_string)
+    else:
+        amount = parse_amount(amount_string)
+
+    return {'line': line_number,
+            'account': account_string,
+            'amount': amount}
+
+def parse_transactions(lines, adjust_signs):
+    "Convert list of lines from journal file to list of transactions."
+    result = []
+    transaction = {}
+    postings = []
+    line_count = 0
+    for line in lines:
+        line = line.strip()
+        if line.startswith("%") or line.startswith("#"):
+            ## Lines beginning with '#' or '%' are treated as
+            ## blanks/comments A comment can't begin at the end of a
+            ## line that contains something else, though.
+            line = ''
+        line_count += 1
+        if len(line) == 0:
+            if transaction:
+                transaction['postings'] = postings
+                result += [transaction]
+                transaction = {}
+                postings = []
+        else:
+            if not transaction:
+                transaction = parse_first_line(line_count, line)
+            else:
+                postings += [parse_posting(line_count, line, adjust_signs)]
+    if transaction:
+        transaction['postings'] = postings
+        result += [transaction]
+    return result
+
+def parse_file(fname, adjust_signs):
+    "convert text in fname into list of transactions."
+    with open(fname) as infile:
+        return parse_transactions(infile.readlines(), adjust_signs)
+
+# }}}
+
+def extract_accounts(transactions):
+    ## XXX: I believe this is useless and not used
+    """extract the accounts named in transactions to a dictionary.
+
+    Account names are case-insensitive, but we remember the case
+    the first time we see each account name."""
+    accounts = {}
+    for transaction in transactions:
+        for posting in transaction['postings']:
+            account = posting['account']
+            as_upper = account.upper()
+            if not accounts.has_key(as_upper):
+                accounts[as_upper] = account
+    return accounts
+
+def print_accounts(accounts_dict):
+    "Print chart of accounts represented in ACCOUNTS_DICT to stdout."
+    for line in chart_of_accounts(accounts_dict):
+        print line
+
+def chart_of_accounts(accounts_dict, prefix= "", indent=""):
+    """Return list of strings describing structure of accounts.
+
+    accounts_dict represents hierachical structure of accounts."""
+    result = []
+    accounts =  accounts_dict.keys()
+    accounts.sort()
+    for account in accounts:
+        account_name = accounts_dict[account]['name']
+        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
+        has_own_postings = accounts_dict[account]['has_own_postings']
+
+        if len(sub_accounts) == 0:
+            result += [indent + prefix + account_name]
+        elif (len(sub_accounts) == 1 and not has_own_postings):
+            result += chart_of_accounts(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent)
+        else:
+            result += [indent + prefix + account_name]
+            result += chart_of_accounts(accounts_dict[account]['sub_accounts'], "", indent+"  ")
+    return result
+
+def account_string_components(account_string):
+    """Split account_string into components.
+
+    Returns two versions:
+    * 'original' with original case/spelling, and
+    * regular with upper-cased spelling, and singular names converted
+      to plural to increase consistency."""
+    original = account_string.split(':')
+    regular = [root_account_name(account_string)]
+    for component in original[1:]:
+        regular += [component.upper()]
+    return {'original' : original,
+            'regular': regular}
+
+def _make_account(name):
+    "Build a dictionary that functions as an account_tree structure."
+    return {'name': name,
+            'sub_accounts' : {},
+            'balances' : {},
+            'has_own_postings' : False}
+
+def _ensure_sub_account(account,
+                        sub_account_regular_name,
+                        sub_account_original_name):
+    "Internal. Make sure account is direct descendant of account, and return it."
+    if not account['sub_accounts'].has_key(sub_account_regular_name):
+        account['sub_accounts'][sub_account_regular_name] = _make_account(sub_account_original_name)
+    return account['sub_accounts'][sub_account_regular_name]
+
+def _ensure_sub_accounts(account_string, root_account):
+    """Internal. Ensure all of account_string's components are present under root.
+
+    We also mark the leaf node as having its own postings."""
+
+    components = account_string_components(account_string)
+    original = components['original']
+    regular = components['regular']
+    account = root_account
+    while len(original) > 0:
+        account = _ensure_sub_account(account, regular[0], original[0])
+        if len(original) == 1:
+            account['has_own_postings'] = True
+        original = original[1:]
+        regular = regular[1:]
+
+def account_tree_from_transactions(transactions):
+    "Build account tree structure from transactions."
+    root = _make_account('')
+    for transaction in transactions:
+        for posting in transaction['postings']:
+            _ensure_sub_accounts(posting['account'], root)
+    return root['sub_accounts']
+
+def account_tree_from_account_strings(account_strings):
+    "Build account tree structure from list of account_strings."
+    root = _make_account('')
+    for account_string in account_strings:
+        _ensure_sub_accounts(account_string, root)
+    return root['sub_accounts']
+
+def find_account(account_string, account_tree):
+    "Return the part of account_tree named by account_string."
+    components = account_string_components(account_string)['regular']
+    account_name = components[0]
+    account_tree = account_tree[account_name]
+    while len(components) > 1:
+        components = components[1:]
+        account_name = components[0]
+        account_tree = account_tree['sub_accounts'][account_name]
+    return account_tree
+
+def account_and_parents(account_string, account_tree):
+    "Return nodes of account_tree that related to account_string or it's parents."
+    components = account_string_components(account_string)['regular']
+    this_account_string = components[0]
+    account_strings = [this_account_string]
+    for component in components[1:]:
+        this_account_string += ":" + component
+        account_strings += [this_account_string]
+    result = []
+    for account_string in account_strings:
+        result += [find_account(account_string, account_tree)]
+    return result
+
+def account_string_and_parents(account_string):
+    "Return regularised name for account and all of it's parent accounts."
+    components = account_string_components(account_string)['regular']
+    this_result = components[0]
+    result = [this_result]
+    for component in components[1:]:
+        this_result += ":" + component
+        result += [this_result]
+    return result
+
+def book_posting(posting, account_tree):
+    "Update balances in account_tree using account & amount from posting."
+
+    amount = posting['amount']
+    units = amount['units']
+    quantity = amount['quantity']
+    account_string = posting['account']
+
+    find_account(account_string, account_tree)['has_own_postings'] = True
+
+    for account in account_and_parents(account_string, account_tree):
+        balances = account['balances']
+        if balances.has_key(units):
+            balances[units]['quantity'] += quantity
+        else:
+            balances[units] = dict(amount)
+
+def calculate_balances(transactions):
+    "Return account tree with balances from transactions."
+    account_tree = account_tree_from_transactions(transactions)
+    for transaction in transactions:
+        for posting in transaction['postings']:
+            book_posting(posting, account_tree)
+    return account_tree
+
+def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars_for_org_mode=False):
+    """Internal.
+
+    Return list of (amount, account-name) string pairs showing a/c structure."""
+    result = []
+    accounts =  accounts_dict.keys()
+    accounts.sort()
+    for account in accounts:
+        account_name = accounts_dict[account]['name']
+        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
+        balances  = accounts_dict[account]['balances']
+        has_own_postings = accounts_dict[account]['has_own_postings']
+        amount_string = format_single_unit_balance(balances)
+        if print_stars_for_org_mode:
+            stars = ("*"*(indent+1))
+        else:
+            stars=""
+        if len(sub_accounts) == 0:
+            result += [(stars, amount_string, ("  " * (indent*2)) + prefix + account_name)]
+        elif (len(sub_accounts) == 1 and not has_own_postings):
+            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent, print_stars_for_org_mode)
+        else:
+            result += [(stars, amount_string, ("  " * (indent*2)) + prefix + account_name)]
+            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], "", indent+1, print_stars_for_org_mode)
+    return result
+
+def print_single_unit_balances(transactions, print_stars_for_org_mode):
+    "Print balances of accounts. Assumes only 1 unit/ccy per account."
+    for line in join_columns(justify_columns(single_unit_balances_helper(calculate_balances(transactions),
+                                                                         print_stars_for_org_mode=print_stars_for_org_mode), "LRL")):
+        print line
+
+def calculate_register(transactions, account_string):
+    "Calculate text showing effect of transactions on relevant account."
+    result = []
+    transactions = filter_by_account(transactions, account_string)
+    account_tree = account_tree_from_transactions(transactions)
+    for transaction in transactions:
+        for posting in filter_by_account(transaction['postings'], account_string):
+            book_posting(posting, account_tree)
+            result += [(transaction['date'],
+                        format_amount(posting['amount']),
+                        format_single_unit_balance(find_account(account_string, account_tree)['balances']),
+                        posting['account'],
+                        transaction['description'])]
+    return result
+
+def print_register(transactions, account_string, print_reversed=False):
+    data = calculate_register(transactions, account_string)
+    data = rjust_column(data, 0)
+    data = rjust_column(data, 1)
+    data = rjust_column(data, 2)
+    data = ljust_column(data, 3)
+    data = join_columns(data, '\t')
+
+    if print_reversed:
+        data.reverse()
+    for line in data:
+        print line
+
+def main():
+    "Program that runs if invoked as a script."
+    parser = argparse.ArgumentParser(description='Command-line, double-entry accounting in python.')
+    parser.add_argument('file', metavar='FILE',
+                        help='the input journal file to read from')
+    parser.add_argument('--tweak-signs-of-input-amounts',
+                        default=False,
+                        action="store_true",
+                        help="negate amounts from input file for equity/liabilities/income")
+    parser.add_argument('--print-transactions',
+                        default=False,
+                        action="store_true",
+                        help="print a re-formatted version of FILE")
+    parser.add_argument('--print-chart-of-accounts',
+                        default=False,
+                        action="store_true",
+                        help="print structure of account hierarchy found in FILE")
+    parser.add_argument('--print-balances',
+                        default=False,
+                        action="store_true",
+                        help="print balances and structure of account hierarchy found in FILE")
+    parser.add_argument('--print-stars-for-org-mode',
+                        default=False,
+                        action="store_true",
+                        help="print stars for indentation so file can be collapsed using emacs' org-mode")
+    parser.add_argument('--reverse-order',
+                        default=False,
+                        action="store_true",
+                        help="Reverse order lines are printed (--print-xyz)")
+
+    # parser.add_argument('--balance', nargs='*', metavar='ACCOUNT',
+    #                     help='show account balances (all accounts if none specified)')
+
+    parser.add_argument('--print-register', metavar='ACCOUNT',
+                        help='print a register for specified account')
+
+    parser.add_argument('--first-date', metavar='FIRST-DATE',
+                        help='ignore transactions before FIRST-DATE')
+
+    parser.add_argument('--last-date', metavar='LAST-DATE',
+                        help='ignore transactions after LAST-DATE')
+
+    args = parser.parse_args()
+
+
+    if (args.first_date):
+        if not is_valid_date(args.first_date):
+            sys.stderr.write("Invalid first-date: '%s'.\nExiting.\n" % args.first_date)
+            sys.exit(-1)
+        else:
+            print "# First date:", args.first_date
+
+    if (args.last_date):
+        if not is_valid_date(args.last_date):
+            sys.stderr.write("Invalid last-date: '%s'.\nExiting.\n" % args.last_date)
+            sys.exit(-1)
+        else:
+            print "# Last date:", args.last_date
+
+    transactions = parse_file(args.file, args.tweak_signs_of_input_amounts)
+    ensure_date_sorted(transactions)
+    ensure_balanced(transactions)
+
+    if (args.first_date):
+        transactions = filter_by_date(transactions, first_date = args.first_date)
+
+    if (args.last_date):
+        transactions = filter_by_date(transactions, last_date = args.last_date)
+
+    if (args.print_chart_of_accounts):
+        for line in chart_of_accounts(account_tree_from_transactions(transactions)):
+            print line
+
+    if (args.print_transactions):
+        print_transactions(transactions)
+
+    if (args.print_balances):
+        print_single_unit_balances(transactions, args.print_stars_for_org_mode)
+
+    if (args.print_register):
+        print_register(transactions, args.print_register, args.reverse_order)
+
+if __name__ == "__main__":
+    main()

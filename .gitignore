@@ -1,0 +1,7 @@
+*.pyc
+*~
+\#*\#
+*.out
+balances.org
+*.secrets
+*.accounts

@@ -171,11 +171,16 @@ def format_amount(amount):
     #else:
     raise Exception('Unknown unit in format_amount:', units)
 
-def format_single_unit_balance(balances):
-    if len(balances.keys()) == 1:
-        return format_amount(balances.values()[0])
+def extract_single_unit_amount(amounts):
+    "Given a set of amounts, make sure there is exactly one currency/unit present and return that amount."
+    if len(amounts.keys()) == 1:
+        return amounts.values()[0]
     # else
-    raise ValueError("format_single_unit_balance: balances is not single unit/ccy:", balances)
+    raise ValueError("extract_single_unit_amount: amounts do not contain a single unit/ccy:", amounts)
+
+def format_single_unit_amount(amounts):
+    "Given a set of amounts, make sure there is exactly one currency/unit present and return that amount."
+    return format_amount(extract_single_unit_amount(amounts))
 
 # }}}
 
@@ -363,6 +368,84 @@ def parse_first_line(line_number, line):
             'date': reformat_date(date_string),
             'description': description_string}
 
+
+def verify_balances(transactions, verifications, verbose, exit_on_failure):
+    """Check that all assertions re account balances in verifications
+    are true.
+    Account balance assertions do not need to be written in date
+    order. There is probably value in allowing these to be out of
+    order in the file wrt the transactions. There is probably also
+    value in allowing them to be in arbitrary order themselves. For
+    example, we might have a bunch of assertions grouped by account
+    rather than by date, at the start of the transactions file."""
+
+    verify_failed = False
+
+    verifications = sorted(verifications, key=lambda x: x['date'])
+    account_tree = account_tree_from_transactions(transactions)
+    for transaction in transactions:
+        if len(verifications) > 0 and transaction['date'] > verifications[0]['date']:
+
+            account_string = verifications[0]['account']
+            amount = verifications[0]['amount']
+            actual_balances  = find_account(account_string, account_tree)['balances']
+
+            if (extract_single_unit_amount(actual_balances) == amount):
+                if (verbose):
+                    print "Verified:", verifications[0]['date'], verifications[0]['account'], format_amount(amount)
+            else:
+                verify_failed = True
+                sys.stderr.write("FAILED: verify-balance for account '%s' at %s. Expected balance: %s. Actual balance: %s.\n" %
+                                 (account_string, verifications[0]['date'], format_amount(amount), format_single_unit_amount(actual_balances)))
+            verifications = verifications[1:]
+
+        for posting in transaction['postings']:
+            book_posting(posting, account_tree)
+    while len(verifications) > 0:
+        print "!", verifications[0], "!"
+        verifications = verifications[1:]
+
+    if exit_on_failure and verify_failed:
+        sys.stderr.write("Verify balance operation failed.\nExiting.\n")
+        sys.exit(-1)
+    return account_tree
+
+def parse_balance_verify(line_number, line, adjust_sign):
+    """parse string containing a balance verification/assertion.
+
+    Format is:
+
+      VERIFY-BALANCE <date> <account> <amount>
+
+    For example:
+      "VERIFY-BALANCE 2012-12-31 Assets:Cash $10"."""
+
+    line = line.strip()
+    split = line.split()
+
+    date_string = split[1]
+    account_string = split[2]
+    amount_string = split[3].translate(None, "$")
+
+    if not is_valid_account_string(account_string):
+        sys.stderr.write("Line %d: invalid account string: '%s'.\n" %
+                         (line_number, account_string))
+        sys.stderr.write("Exiting.\n")
+        sys.exit(-1)
+
+    if not is_valid_date(date_string):
+            sys.stderr.write("Invalid date: '%s'.\nExiting.\n" % date_string)
+            sys.exit(-1)
+
+    if adjust_sign:
+        amount = parse_amount_adjusting_sign(account_string, amount_string)
+    else:
+        amount = parse_amount(amount_string)
+
+    return {'date': date_string,
+            'account': account_string,
+            'amount': amount}
+
 def parse_posting(line_number, line, adjust_sign):
     """parse string containing a posting.
 
@@ -388,9 +471,15 @@ def parse_posting(line_number, line, adjust_sign):
             'account': account_string,
             'amount': amount}
 
+def is_balance_verify_line(line):
+    "Does line contain a balance-verification assertion?"
+    items = line.strip().split()
+    return (len(items) > 0) and (items[0].upper() == "VERIFY-BALANCE")
+
 def parse_transactions(lines, adjust_signs):
     "Convert list of lines from journal file to list of transactions."
-    result = []
+    transactions = []
+    verify_balances = []
     transaction = {}
     postings = []
     line_count = 0
@@ -403,20 +492,25 @@ def parse_transactions(lines, adjust_signs):
             line = ''
         line_count += 1
         if len(line) == 0:
+            ## A blank line - possibly after a transaction
             if transaction:
                 transaction['postings'] = postings
-                result += [transaction]
+                transactions += [transaction]
                 transaction = {}
                 postings = []
         else:
-            if not transaction:
+            ## non-blank line
+            if is_balance_verify_line(line):
+                verify_balances += [parse_balance_verify(line_count, line, adjust_signs)]
+            elif not transaction:
                 transaction = parse_first_line(line_count, line)
             else:
                 postings += [parse_posting(line_count, line, adjust_signs)]
     if transaction:
         transaction['postings'] = postings
-        result += [transaction]
-    return result
+        transactions += [transaction]
+    return {'transactions' : transactions,
+            'verify-balances' : verify_balances}
 
 def parse_file(fname, adjust_signs):
     "convert text in fname into list of transactions."
@@ -597,7 +691,7 @@ def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars
         sub_accounts = accounts_dict[account]['sub_accounts'].keys()
         balances  = accounts_dict[account]['balances']
         has_own_postings = accounts_dict[account]['has_own_postings']
-        amount_string = format_single_unit_balance(balances)
+        amount_string = format_single_unit_amount(balances)
         if print_stars_for_org_mode:
             stars = ("*"*(indent+1))
         else:
@@ -627,7 +721,7 @@ def calculate_register(transactions, account_string):
             book_posting(posting, account_tree)
             result += [(transaction['date'],
                         format_amount(posting['amount']),
-                        format_single_unit_balance(find_account(account_string, account_tree)['balances']),
+                        format_single_unit_amount(find_account(account_string, account_tree)['balances']),
                         posting['account'],
                         transaction['description'])]
     return result
@@ -654,6 +748,18 @@ def main():
                         default=False,
                         action="store_true",
                         help="negate amounts from input file for equity/liabilities/income")
+    parser.add_argument('--verbose',
+                        default=False,
+                        action="store_true",
+                        help="print extra information while running")
+    parser.add_argument('--show-balance-verifications',
+                        default=False,
+                        action="store_true",
+                        help="print details of account verifications")
+    parser.add_argument('--ignore-balance-verification-failure',
+                        default=False,
+                        action="store_true",
+                        help="do not exit if an verify-balance test fails")
     parser.add_argument('--print-transactions',
                         default=False,
                         action="store_true",
@@ -704,7 +810,14 @@ def main():
         else:
             print "# Last date:", args.last_date
 
-    transactions = parse_file(args.file, args.tweak_signs_of_input_amounts)
+    parsed_file = parse_file(args.file, args.tweak_signs_of_input_amounts)
+    transactions = parsed_file['transactions']
+    verifications = parsed_file['verify-balances']
+
+    verify_balances(transactions, verifications,
+                    (args.verbose or args.show_balance_verifications),
+                    not args.ignore_balance_verification_failure)
+
     ensure_date_sorted(transactions)
     ensure_balanced(transactions)
 

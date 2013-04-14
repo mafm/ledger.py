@@ -1,4 +1,4 @@
-# ledger.py: command-line, double-entry accounting in python.
+# ledger.py: command-line, double-entry accounting in python
 
 **ledger.py** is a simple, command-line, double-entry accounting system, that reads transactions
 from a file written in a simple text format and produces summary reports.

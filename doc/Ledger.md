@@ -17,18 +17,18 @@ In particular, [ledger](http://www.ledger-cli.org/) fails silently instead of co
 
 ## Debits and Credits
 
-[Ledger](http://www.ledger-cli.org/) checks that transactions balance by making sure that all the amounts posted in a transaction
-add up to zero. This means that you need to use negative amounts in places where you would normally expect
-to see positive amounts. For example, the transaction below tells [ledger](http://www.ledger-cli.org/) 
-to *decrease* the amount in the ```Liabilities:MasterCard``` account by $10, to offset the $10 increase in the
-expense account.
+[Ledger](http://www.ledger-cli.org/) checks that transactions balance by making sure that the amounts
+posted in a transaction add up to zero. This means that you need to use negative amounts in places where
+you would expect to use positive amounts. For example, the transaction below tells
+[ledger](http://www.ledger-cli.org/) to *decrease* the amount in the ```Liabilities:MasterCard```
+account by $10, to offset a $10 increase in the expense account.
 
 ```
 2006/10/15 Exxon
       Expenses:Auto:Gas        $10.00
       Liabilities:MasterCard  -$10.00
 ```
-In reality (or at least the usual book-keeping conventions) an increase in a liability should balance
+In reality (or at least the normal book-keeping conventions) an increase in a liability should balance
 an equal increase in an expense account. [Describing transactions in terms of debits and credits]
 (http://en.wikipedia.org/wiki/Debits_and_credits) is pointlessly complicated, but
 [ledger](http://www.ledger-cli.org/)'s alternative (making the user manually negate amounts for income,

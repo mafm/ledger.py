@@ -728,7 +728,7 @@ def print_single_unit_balances(transactions, print_stars_for_org_mode):
                                                                          print_stars_for_org_mode=print_stars_for_org_mode), "LRL")):
         print line
 
-def calculate_register(transactions, account_string):
+def calculate_register(transactions, account_string, first_date, last_date):
     "Calculate text showing effect of transactions on relevant account."
     result = []
     transactions = filter_by_account(transactions, account_string)
@@ -736,22 +736,24 @@ def calculate_register(transactions, account_string):
     for transaction in transactions:
         for posting in filter_by_account(transaction['postings'], account_string):
             book_posting(posting, account_tree)
-            result += [(transaction['date'],
-                        format_single_unit_amount(find_account(account_string, account_tree)['balances']),
-                        format_amount(posting['amount']),
-                        posting['account'],
-                        transaction['description'])]
+            if (((not first_date) or (transaction['date'] >= first_date)) and
+                ((not last_date) or (transaction['date'] <= last_date))):
+                result += [(transaction['date'],
+                            format_single_unit_amount(find_account(account_string, account_tree)['balances']),
+                            format_amount(posting['amount']),
+                            posting['account'],
+                            transaction['description'])]
     return result
 
-def print_register(transactions, account_string, print_reversed=False):
-    data = calculate_register(transactions, account_string)
+def print_register(transactions, account_string, reverse_print_order, first_date, last_date):
+    data = calculate_register(transactions, account_string, first_date, last_date)
     data = rjust_column(data, 0)
     data = rjust_column(data, 1)
     data = rjust_column(data, 2)
     data = ljust_column(data, 3)
     data = join_columns(data, '\t')
 
-    if print_reversed:
+    if reverse_print_order:
         data.reverse()
     for line in data:
         print line
@@ -777,6 +779,10 @@ def main():
                         default=False,
                         action="store_true",
                         help="do not exit if an verify-balance test fails")
+    parser.add_argument('--ignore-transactions-outside-dates',
+                        default=False,
+                        action="store_true",
+                        help="Ignore any transactions outside the relevant dates.")
     parser.add_argument('--print-transactions',
                         default=False,
                         action="store_true",
@@ -793,7 +799,7 @@ def main():
                         default=False,
                         action="store_true",
                         help="print stars for indentation so file can be collapsed using emacs' org-mode")
-    parser.add_argument('--reverse-order',
+    parser.add_argument('--reverse-print-order',
                         default=False,
                         action="store_true",
                         help="Reverse order lines are printed (--print-xyz)")
@@ -802,16 +808,19 @@ def main():
     #                     help='show account balances (all accounts if none specified)')
 
     parser.add_argument('--print-register', metavar='ACCOUNT',
-                        help='print a register for specified account')
+                        help='print the running balance for a specified account')
 
     parser.add_argument('--first-date', metavar='FIRST-DATE',
-                        help='ignore transactions before FIRST-DATE')
+                        help="ignore or don't report transactions before FIRST-DATE")
 
     parser.add_argument('--last-date', metavar='LAST-DATE',
-                        help='ignore transactions after LAST-DATE')
+                        help="ignore or don't report transactions after LAST-DATE")
 
     args = parser.parse_args()
 
+    parsed_file = parse_file(args.file, args.tweak_signs_of_input_amounts)
+    transactions = parsed_file['transactions']
+    verifications = parsed_file['verify-balances']
 
     if (args.first_date):
         if not is_valid_date(args.first_date):
@@ -827,35 +836,29 @@ def main():
         else:
             print "# Last date:", args.last_date
 
-    parsed_file = parse_file(args.file, args.tweak_signs_of_input_amounts)
-    transactions = parsed_file['transactions']
-    verifications = parsed_file['verify-balances']
-
     verify_balances(transactions, verifications,
                     (args.verbose or args.show_balance_verifications),
                     not args.ignore_balance_verification_failure)
-
     ensure_date_sorted(transactions)
     ensure_balanced(transactions)
 
-    if (args.first_date):
-        transactions = filter_by_date(transactions, first_date = args.first_date)
-
-    if (args.last_date):
-        transactions = filter_by_date(transactions, last_date = args.last_date)
+    if (args.ignore_transactions_outside_dates):
+        print "# Ignoring transactions earlier/later than specified dates."
+        transactions = filter_by_date(transactions, args.first_date, args.last_date)
 
     if (args.print_chart_of_accounts):
         for line in chart_of_accounts(account_tree_from_transactions(transactions)):
             print line
 
     if (args.print_transactions):
-        print_transactions(transactions)
+        relevant_transactions = filter_by_date(transactions, args.first_date, args.last_date)
+        print_transactions(relevant_transactions)
 
     if (args.print_balances):
         print_single_unit_balances(transactions, args.print_stars_for_org_mode)
 
     if (args.print_register):
-        print_register(transactions, args.print_register, args.reverse_order)
+        print_register(transactions, args.print_register, args.reverse_print_order, args.first_date, args.last_date)
 
 if __name__ == "__main__":
     main()

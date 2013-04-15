@@ -737,8 +737,8 @@ def calculate_register(transactions, account_string):
         for posting in filter_by_account(transaction['postings'], account_string):
             book_posting(posting, account_tree)
             result += [(transaction['date'],
-                        format_amount(posting['amount']),
                         format_single_unit_amount(find_account(account_string, account_tree)['balances']),
+                        format_amount(posting['amount']),
                         posting['account'],
                         transaction['description'])]
     return result

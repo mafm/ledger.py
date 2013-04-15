@@ -8,6 +8,9 @@ Because transaction data is stored as text, it can be managed
 using a version control system like git. This makes it easy
 to maintain an audit trail.
 
+**Ledger.py** is like John Wiegley's
+[Ledger](http://www.ledger-cli.org/), but simpler.
+
 ## Getting started
 The program is currently contained in a single python file. You can grab it and try it out like this:
 ```

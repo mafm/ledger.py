@@ -37,7 +37,7 @@ Here is a simple example input file with three transactions:
 2013-01-05 I bought some groceries and paid using the cheque account.
   Expenses:Food:Groceries    $98.53
   Assets:Bankwest:Cheque    -$98.53
-  
+
 2013-01-10 I bought some petrol, and paid using a credit card
   Expenses:Motor:Fuel    $58.01
   Liabilities:Bankwest:Visa   $58.01
@@ -45,19 +45,38 @@ Here is a simple example input file with three transactions:
 
 ### Transactions
 
-A transaction contains:
+A transaction consists of:
 - a date,
 - a description, or narration, and
 - a set of postings.
 
-Postings contains:
+A posting consists of:
 - an account name, and
-- an amount that the posting will change the account by.
+- an amount by which the posting changes the account's balance.
+
+#### Transaction Syntax
+Transactions in the input file look like this:
+```
+<date> <description>
+ <account> <amount>
+ ...
+ <account> <amount>
+```
+Transactions are separated by blank lines. You don't need to indent
+the lines that represent transaction postings, but the input file is
+easier to read if you do.
+
+Account names should not contain whitespace characters, and can be a
+colon separated sequence of names that reflect a hierarchical
+structure amount accounts. The first component of an account name
+should be designate one of the [five basic account
+types](the-accounting-equation).
 
 #### The accounting equation
 
-Transactions need to *balance*. If the input file contains a transaction that doesn't balance, **ledger.py** will exit
-after printing an error message.
+Transactions need to *balance*. If the input file contains a
+transaction that doesn't balance, **ledger.py** will exit after
+printing an error message.
 
 **Ledger.py** understands 5 basic types of accounts:
 - assets,
@@ -70,27 +89,30 @@ The basic rule of accounting is that:
 ```
 Assets + Expenses = Income + Liabilities + Equity.
 ```
-If a transaction increases an asset or expense account, it also needs to post a corresponding increase to income,
-liability, or equity, in order to balance.
-
-#### Transaction Syntax
-Transactions in the input file look like this:
-```
-<date> <description>
- <account> <amount>
- <account> <amount>
- ...
- <blank line>
-```
-Transactions are terminated by blank lines. You don't need to indent the lines that represent transaction postings,
-but the input file is easier to read if you do.
+If a transaction increases an asset or expense account, it also needs
+to post a corresponding increase to an income,
+liability, or equity account, in order to balance.
 
 #### Transactions need to be in date order
 
-**Ledger.py** forces you to write transactions in date order.
-If transactions are not in date order, the program will exit with an error message after reading the file.
-I find this useful, because it makes the input file easier to read, and helps ensure that I get the right
-date on transactions.
+**Ledger.py** forces you to write transactions in date order. If
+transactions are not in date order, the program will exit with an
+error message after reading the file.  This is useful, because it
+makes the input file easier to read, and helps ensure that
+transactions have correct dates.
+
+Dates should be written in [ISO format](http://xkcd.com/1179) like
+this: ```2013-02-28```. **Ledger.py** _will_ accept dates in other
+formats though, but it convert them to ISO format internally, and if
+you use the ```--print-transactions``` command, they will be printed
+that way.
+
+### Other things that can go in the input file
+
+**Ledger.py**'s input file can contain some other optional information
+in addition to transactions:
+- comments
+- instructions
 
 ### Comments
 
@@ -98,29 +120,49 @@ Lines in the input file beginning with '%' or '#' are treated as blank lines. Th
 characters have no effect unless they are the first non-blank characters in a
 line, so you can't put a comment at the end of a line containing something else.
 
-### Other things that can go in the input file
+### Instructions
 
-**Ledger.py**'s input file can contain some other optional information in addition to transactions:
-- verify-balance statements
+Instructions let you tell **ledger.py** to do things like set default
+values, or check account balances are correct at particular dates. At
+the moment, the only instructions **ledger.py** accepts are
+VERIFY-BALANCE instructions. More will be added later to allow you to do
+other things like specify the default currency for an input file.
 
-#### verify-balance statement
+#### VERIFY-BALANCE instructions
 
-You can make sure that the balance in an account is correct at a particular date, by adding lines like this:
+You can get **ledger.py** to check that the balance in an account is
+correct at a particular date, by adding lines like this:
 ```
-VERIFY-BALANCE 2013-02-01 Assets:Bankwest:Cheque 621.05
+VERIFY-BALANCE 2013-02-01 Assets:Bankwest:Cheque $621.05
 ```
-to an input file. When **ledger.py** reads the input file, it will complain and exit if the
-balance in the account is not as specified at the end of the specified date. You can 
-use the option ```--ignore-balance-verification-failure``` to prevent **ledger.py** quitting
-due to a wrong balance. This might be useful if you want to use **ledger.py** to examine the
-transactions and find the problem.
+to an input file. When **ledger.py** reads the input file, it will
+complain and exit if the balance in the account is not as specified at
+the end of the specified date. You can use the option
+```--ignore-balance-verification-failure``` to prevent **ledger.py**
+quitting due to incorrect balances. This might be useful if you want to use
+**ledger.py** to examine the transactions and find the problem.
 
-You can also use the ``--verbose`` or ``--show-balance-verifications``` if you want to see an
-explicit confirmation that each of the verify-balance checks has been successful.
+You can also use the ``--verbose`` or
+``--show-balance-verifications``` options if you want to see an
+explicit confirmation that each of the verify-balance checks has been
+successful.
+
+##### Where verify-balance instructions can be specified
+
+Unlike transactions, the verify-balance instructions in an input file do
+_not_ need to be written in date order. You can put them in any order
+you like, and you can also intermingle them with transactions if you
+want. For example, you could put all verify-balance instructions near
+the beginning of an input file, grouped by account name, and then by
+date if you wanted to.
+
+**Legder.py** extracts all verify-balance instructions from a file and
+checks them against transactions once the file has been read
+completely.
 
 ## Commands
 
-You can currently do the following things with **ledger.py**:
+**Ledger.py** can generate the following reports from an input file:
 - --print-balances - show the current balances of accounts mentioned in the input file
 - --print-register - show a running balance for a specified account
 - --print-chart-of-accounts - show the current structure of the accounts
@@ -169,6 +211,7 @@ $ ./ledger.py examples/sample.transactions --print-register Expenses
 
 
 ### Print Chart of Accounts
+
 This currently just shows the hierarchical structure of the accounts mentioned in the input file.
 
 ```
@@ -178,7 +221,7 @@ This currently just shows the hierarchical structure of the accounts mentioned i
 ### Print Transactions
 
 This might be useful if you want to get a cleaned-up version of an input file that's consistently formatted. You
-can also use this to print the subsect of transactions occuring between two dates.
+can also use this to print the subset of transactions that occur between two dates.
 
 Relevant optional arguments:
 - ```--first-date <first-date>``` - don't print transactions before this date

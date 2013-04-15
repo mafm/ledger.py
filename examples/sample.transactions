@@ -13,3 +13,6 @@
 2013-01-15 I paid my electricity bill.
   Expenses:Electricity    $280.42
   Assets:Bankwest:Cheque  -$280.42
+
+# I checked my bank statement on the 1st of Feb, and this is what it said.
+VERIFY-BALANCE 2013-02-01 Assets:Bankwest:Cheque 621.05

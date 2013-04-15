@@ -188,7 +188,8 @@ def root_account_name(account_string):
     """Return regularised version of root account's name'.
 
     Basically, we convert to upper case, but we also make sure that
-    root name is a plural if the singular was used instead."""
+    root name is a plural if the singular was used instead. We also
+    treat 'revenue' or 'revenues' accounts as 'income' accounts."""
     root = account_string.split(':')[0]
     root = root.upper()
     if (root == "EXPENSE"):
@@ -197,6 +198,10 @@ def root_account_name(account_string):
         return "ASSETS"
     if (root == "LIABILITY"):
         return "LIABILITIES"
+    if (root == "REVENUE"):
+        return "INCOME"
+    if (root == "REVENUES"):
+        return "INCOME"
     return root
 
 def sign_account(account_string):
@@ -369,6 +374,19 @@ def parse_first_line(line_number, line):
             'description': description_string}
 
 
+def verify_balance(verification, account_tree, verbose):
+    account_string = verification['account']
+    amount = verification['amount']
+    actual_balances  = find_account(account_string, account_tree)['balances']
+
+    if (extract_single_unit_amount(actual_balances) == amount):
+        if (verbose):
+            print "Verified:", verification['date'], verification['account'], format_amount(amount)
+    else:
+        verify_failed = True
+        sys.stderr.write("FAILED: verify-balance for account '%s' at %s. Expected balance: %s. Actual balance: %s.\n" %
+                         (account_string, verification['date'], format_amount(amount), format_single_unit_amount(actual_balances)))
+
 def verify_balances(transactions, verifications, verbose, exit_on_failure):
     """Check that all assertions re account balances in verifications
     are true.
@@ -386,23 +404,14 @@ def verify_balances(transactions, verifications, verbose, exit_on_failure):
     for transaction in transactions:
         if len(verifications) > 0 and transaction['date'] > verifications[0]['date']:
 
-            account_string = verifications[0]['account']
-            amount = verifications[0]['amount']
-            actual_balances  = find_account(account_string, account_tree)['balances']
-
-            if (extract_single_unit_amount(actual_balances) == amount):
-                if (verbose):
-                    print "Verified:", verifications[0]['date'], verifications[0]['account'], format_amount(amount)
-            else:
-                verify_failed = True
-                sys.stderr.write("FAILED: verify-balance for account '%s' at %s. Expected balance: %s. Actual balance: %s.\n" %
-                                 (account_string, verifications[0]['date'], format_amount(amount), format_single_unit_amount(actual_balances)))
+            verify_balance(verifications[0], account_tree, verbose)
             verifications = verifications[1:]
 
         for posting in transaction['postings']:
             book_posting(posting, account_tree)
+
     while len(verifications) > 0:
-        print "!", verifications[0], "!"
+        verify_balance(verifications[0], account_tree, verbose)
         verifications = verifications[1:]
 
     if exit_on_failure and verify_failed:
@@ -422,6 +431,14 @@ def parse_balance_verify(line_number, line, adjust_sign):
 
     line = line.strip()
     split = line.split()
+
+    if len(split) <> 4:
+        sys.stderr.write("Line %d: Invalid VERIFY-BALANCE operation:\n  %s\n" %
+                         (line_number, line))
+        sys.stderr.write("It should look like this:\n  VERIFY-BALANCE <date> <account> <amount>\nbut line %d contains %d elements (not 4).\n"%
+                         (line_number, len(split)))
+        sys.stderr.write("Exiting.\n")
+        sys.exit(-1)
 
     date_string = split[1]
     account_string = split[2]

@@ -95,10 +95,30 @@ date on transactions.
 ### Comments
 
 Lines in the input file beginning with '%' or '#' are treated as blank lines. The '%' and '#'
-are not treated as comments unless they are at the first non-blank characters in a line, so you can't
-put a comment at the end of a line containing something else.
+characters have no effect unless they are the first non-blank characters in a
+line, so you can't put a comment at the end of a line containing something else.
 
-## Operations
+### Other things that can go in the input file
+
+**Ledger.py**'s input file can contain some other optional information in addition to transactions:
+- verify-balance statements
+
+#### verify-balance statement
+
+You can make sure that the balance in an account is correct at a particular date, by adding lines like this:
+```
+VERIFY-BALANCE 2013-02-01 Assets:Bankwest:Cheque 621.05
+```
+to an input file. When **ledger.py** reads the input file, it will complain and exit if the
+balance in the account is not as specified at the end of the specified date. You can 
+use the option ```--ignore-balance-verification-failure``` to prevent **ledger.py** quitting
+due to a wrong balance. This might be useful if you want to use **ledger.py** to examine the
+transactions and find the problem.
+
+You can also use the ``--verbose`` or ``--show-balance-verifications``` if you want to see an
+explicit confirmation that each of the verify-balance checks has been successful.
+
+## Commands
 
 You can currently do the following things with **ledger.py**:
 - --print-balances - show the current balances of accounts mentioned in the input file
@@ -109,9 +129,9 @@ You can currently do the following things with **ledger.py**:
 ### Print Balances
 
 This currently just shows the final balance of the accounts mentioned in the input file. There is some slightly
-clever formatting that any hierarchical structure in the accounts.
+clever formatting that shows any hierarchical structure in the account names.
 
-Example:
+Examples:
 ```
 ./ledger.py examples/sample.transactions --print-balances
 ```
@@ -121,14 +141,25 @@ Example:
 This shows the transactions affecting an account, and the running balance of that account as the transactions
 are encountered.
 
+Relevant optional arguments:
+- ```--first-date <first-date>``` - don't print details for transactions before this date
+- ```--last-date <last-date>``` - don't print details for transactions after this date
+- ```--ignore-transactions-outside-dates``` - start the running balance from zero as at <first-date>, so balances
+shown for the relevant account will not reflect earlier transactions. By default, transactions before
+```<first-date>``` _will_ affect the balance, but **ledger.py** will not print a line for those transactions
+in the ```--print-register``` report.
+
 Examples:
 ```
 ./ledger.py examples/sample.transactions --print-register Expenses:Electricity
 ./ledger.py examples/sample.transactions --print-register Expenses
+./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10
+./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10 --ignore-transactions-outside-dates
+./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10 --last-date 2013-01-12
 ```
-Note that if you specify an account with sub-accounts, transactions affecting sub-accounts will be printed, but
-the running balance for the specified account will be shown, instead of the running balance for the transaction's
-sub-account:
+Note that if you specify an account that has sub-accounts, transactions affecting the sub-accounts will be shown,
+but the running balances shown will be the balance for the specified account, not the balance for the
+transaction's sub-account:
 ```
 $ ./ledger.py examples/sample.transactions --print-register Expenses
 2013-01-05       $98.53  $98.53 Expenses:Food:Groceries I bought some groceries and paid using the cheque account.
@@ -146,17 +177,29 @@ This currently just shows the hierarchical structure of the accounts mentioned i
 
 ### Print Transactions
 
-This might be useful if you want to get a cleaned-up version of an input file that's consistently formatted.
+This might be useful if you want to get a cleaned-up version of an input file that's consistently formatted. You
+can also use this to print the subsect of transactions occuring between two dates.
+
+Relevant optional arguments:
+- ```--first-date <first-date>``` - don't print transactions before this date
+- ```--last-date <last-date>``` - don't print transactions after this date
 
 Example:
 ```
 ./ledger.py examples/sample.transactions --print-transactions
+./ledger.py examples/sample.transactions --print-transactions --first-date 2013-01-01
+./ledger.py examples/sample.transactions --print-transactions --last-date 2013-01-12
+./ledger.py examples/sample.transactions --print-transactions --first-date 2013-01-01 --last-date 2013-01-12
 ```
 
-## References
+## More Information
 
 There is a fairly extensive online textbook on accounting here:
 http://www.principlesofaccounting.com
 
 There is an explanation of how multi-currency accounting should be done here:
 http://www.mscs.dal.ca/~selinger/accounting
+
+The Australian Tax Office used to give away accounting software they thought was suitable for small businesses.
+You can still download a copy of it here:
+http://www.kilbot.com.au/2011/10/18/download-e-record/

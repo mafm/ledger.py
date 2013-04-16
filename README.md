@@ -34,7 +34,9 @@ As far as I know, **ledger.py** needs only Python 2.7. I am currently using it w
 #### Testing
 
 If you have nosetests installed, you can also run some tests. They are
-not comprehensive.
+not comprehensive. If you have coverage installed, you can also look
+at the test coverage like this: ```nosetests --with-coverage
+--cover-package=ledger```.
 
 ## Status
 

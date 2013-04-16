@@ -3,7 +3,16 @@
 from ledger import chart_of_accounts, print_accounts, parse_amount, \
                    root_account_name, is_valid_account_string, is_balanced, \
                    account_string_components, account_tree_from_account_strings, \
-                   account_string_and_parents, balance_amounts, contains_account
+                   account_string_and_parents, balance_amounts, contains_account, \
+                   join_columns, justify_columns \
+
+def test_join_columns():
+    assert join_columns([['a','b'], ['c','d']])==['a b', 'c d']
+
+def test_justify_columns():
+    assert justify_columns([['aaaa','b'], ['c','ddd']], "LR") == [['aaaa', '  b'], ['c   ', 'ddd']]
+    assert justify_columns([['aaaa','b'], ['c','ddd']], "RL") == [['aaaa', 'b  '], ['   c', 'ddd']]
+    assert justify_columns([], "RL") == []
 
 def test_parse_amount():
     assert parse_amount('-$285.21') == {'units': 'AUD', 'quantity': -28521}

@@ -56,39 +56,6 @@ def justify_columns(seq_of_seq_of_strings, justification):
             seq_of_seq_of_strings = rjust_column(seq_of_seq_of_strings, column)
     return seq_of_seq_of_strings
 
-
-def rjust_columns(seq_of_seq_of_strings):
-    """Right-justify strings in sequence of sequences so each column has equal length.
-
-    Take a sequence of sequences of strings. Make sure strings in nth
-    position of inner sequence are same length by right-justifying
-    them.
-
-    Assumes each inner sequence has same # of components."""
-
-    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
-    if (len(seq_of_seq_of_strings) == 0):
-        return seq_of_seq_of_strings
-    for column in range(len(seq_of_seq_of_strings[0])):
-        seq_of_seq_of_strings = rjust_column(seq_of_seq_of_strings, column)
-    return seq_of_seq_of_strings
-
-def ljust_columns(seq_of_seq_of_strings):
-    """Left-justify strings in sequence of sequences so each column has equal length.
-
-    Take a sequence of sequences of strings. Make sure strings in nth
-    position of inner sequence are same length by left-justifying
-    them.
-
-    Assumes each inner sequence has same # of components."""
-
-    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
-    if (len(seq_of_seq_of_strings) == 0):
-        return seq_of_seq_of_strings
-    for column in range(len(seq_of_seq_of_strings[0])):
-        seq_of_seq_of_strings = ljust_column(seq_of_seq_of_strings, column)
-    return seq_of_seq_of_strings
-
 def rjust_column(seq_of_seq_of_strings, column):
     """Right-justify strings in sequence of sequences so all values in column have equal length.
 
@@ -143,6 +110,10 @@ DEFAULT_UNITS = 'AUD'
 def parse_amount(amount_string):
     "Convert amount_string to a unit/currency and signed quantity."
 
+    # Special case for no unit/ccy
+    if amount_string == "-":
+        return {}
+
     quantity = int(round(float(amount_string.translate(None, "$,")) * 100.0))
 
     return {'units': 'AUD',
@@ -160,11 +131,15 @@ def parse_amount_adjusting_sign(account_string, amount_string):
 def format_amount(amount):
     "Format unit/currency quantity as a string."
 
+    # Special format for nothing at all
+    if amount == {}:
+        return "-"
+
     units = amount['units']
     quantity = amount['quantity']
 
     if units == 'AUD':
-        if quantity > 0:
+        if quantity >= 0:
             return "${0:,.2f}".format(quantity/100.0)
         else:
             return "-${0:,.2f}".format(-quantity/100.0)
@@ -178,9 +153,34 @@ def extract_single_unit_amount(amounts):
     # else
     raise ValueError("extract_single_unit_amount: amounts do not contain a single unit/ccy:", amounts)
 
+def extract_nil_or_single_unit_amount(amounts):
+    "Given a set of amounts, make sure there is zero or one currency/unit present and return that amount."
+    if len(amounts.keys()) == 1:
+        return amounts.values()[0]
+    elif (amounts == {}):
+        return amounts
+    # else
+    raise ValueError("extract_nil_or_single_unit_amount: amounts contain >1 unit/ccy:", amounts)
+
 def format_single_unit_amount(amounts):
     "Given a set of amounts, make sure there is exactly one currency/unit present and return that amount."
     return format_amount(extract_single_unit_amount(amounts))
+
+def format_nil_or_single_unit_amount(amounts):
+    "Given a set of amounts, make sure there is zero or one currency/unit present and return that amount."
+    return format_amount(extract_nil_or_single_unit_amount(amounts))
+
+def difference_nil_or_single_unit_amount(amount1, amount2):
+    "Return amount1 - amount 2 with units of same ccy."
+    if amount1 == {}:
+        return amount2
+    if amount2 == {}:
+        return amount1
+    if (amount1['units'] <> amount2['units']):
+        raise ValueError("difference_nil_or_single_unit_amount: different units in amount1 and amount2:", amount1, amount2)
+    return {'units': amount1['units'],
+            'quantity': amount1['quantity'] - amount2['quantity']}
+
 
 # }}}
 
@@ -688,12 +688,13 @@ def book_posting(posting, account_tree):
         else:
             balances[units] = dict(amount)
 
-def calculate_balances(transactions):
+def calculate_balances(transactions, as_at_date):
     "Return account tree with balances from transactions."
     account_tree = account_tree_from_transactions(transactions)
     for transaction in transactions:
-        for posting in transaction['postings']:
-            book_posting(posting, account_tree)
+        if ((not as_at_date) or (transaction['date'] <= as_at_date)):
+            for posting in transaction['postings']:
+                book_posting(posting, account_tree)
     return account_tree
 
 def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars_for_org_mode=False):
@@ -708,26 +709,74 @@ def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars
         sub_accounts = accounts_dict[account]['sub_accounts'].keys()
         balances  = accounts_dict[account]['balances']
         has_own_postings = accounts_dict[account]['has_own_postings']
-        amount_string = format_single_unit_amount(balances)
+        amount_string = format_nil_or_single_unit_amount(balances)
         if print_stars_for_org_mode:
             stars = ("*"*(indent+1))
         else:
             stars=""
         if len(sub_accounts) == 0:
-            result += [(stars, amount_string, ("  " * (indent*2)) + prefix + account_name)]
+            result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
         elif (len(sub_accounts) == 1 and not has_own_postings):
             result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent, print_stars_for_org_mode)
         else:
-            result += [(stars, amount_string, ("  " * (indent*2)) + prefix + account_name)]
+            result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
             result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], "", indent+1, print_stars_for_org_mode)
     return result
 
-def print_single_unit_balances(transactions, print_stars_for_org_mode):
+def print_single_unit_balances(transactions, print_stars_for_org_mode, as_at_date, first_date, last_date):
     "Print balances of accounts. Assumes only 1 unit/ccy per account."
-    for line in join_columns(justify_columns(single_unit_balances_helper(calculate_balances(transactions),
-                                                                         print_stars_for_org_mode=print_stars_for_org_mode), "LRL")):
-        print line
 
+    if (as_at_date):
+        # If you specify as-at-date, you can't specify first or last dates
+        if first_date:
+            sys.stderr.write("Error in print_single_unit_balances:\n"
+                             " first-date: %s specified in addition to as-at-date '%s'.\n"
+                             "Exiting."%(first_date, as_at_date))
+            sys.exit(-1)
+        if last_date:
+            sys.stderr.write("Error in print_single_unit_balances:\n"
+                             " last-date: %s specified in addition to as-at-date '%s'.\n"
+                             "Exiting."%(last_date, as_at_date))
+            sys.exit(-1)
+
+    if (first_date):
+        # If you specify first date, also need last-date, and no as-at-date.
+        if not last_date:
+            sys.stderr.write("Error in print_single_unit_balances:\n"
+                             " first-date: %s specified, but last-date unspecified.\n"
+                             "Exiting."%(first_date))
+            sys.exit(-1)
+    if last_date:
+        if not first_date:
+            sys.stderr.write("Error in print_single_unit_balances:\n"
+                             " last-date: %s specified, but first-date unspecified.\n"
+                             "Exiting."%(last_date))
+            sys.exit(-1)
+
+    if (not first_date) and (not last_date):
+
+        transactions = filter_by_date(transactions, last_date = as_at_date)
+        balance_text = single_unit_balances_helper(calculate_balances(transactions, as_at_date),
+                                                   print_stars_for_org_mode=print_stars_for_org_mode)
+        for line in join_columns(justify_columns(balance_text, "LRL")):
+            print line
+    if first_date and last_date:
+        transactions = filter_by_date(transactions, last_date = last_date)
+        first_text = single_unit_balances_helper(calculate_balances(transactions, first_date),
+                                                 print_stars_for_org_mode=print_stars_for_org_mode)
+        last_text = single_unit_balances_helper(calculate_balances(transactions, last_date),
+                                                print_stars_for_org_mode=False)
+
+        new_text = [(first_text[0][0], first_date, last_date, "Change","Account")] # )(first_date, last_date, "difference")]
+        for i in range(len(first_text)):
+            new_text += [tuple(list(first_text[i][:2]) + [last_text[i][1]]
+                               + [format_amount(difference_nil_or_single_unit_amount(parse_amount(last_text[i][1]),
+                                                                                     parse_amount(first_text[i][1])))]
+                               + [last_text[i][2]])]
+
+        for line in join_columns(justify_columns(new_text , "LRRRL")):
+            print line
+            format_amount(difference_nil_or_single_unit_amount(parse_amount("-$1,900.00"), parse_amount("$1,900.00")))
 def calculate_register(transactions, account_string, first_date, last_date):
     "Calculate text showing effect of transactions on relevant account."
     result = []
@@ -810,6 +859,9 @@ def main():
     parser.add_argument('--print-register', metavar='ACCOUNT',
                         help='print the running balance for a specified account')
 
+    parser.add_argument('--as-at', metavar='DATE',
+                        help="print report as-at")
+
     parser.add_argument('--first-date', metavar='FIRST-DATE',
                         help="ignore or don't report transactions before FIRST-DATE")
 
@@ -822,6 +874,13 @@ def main():
     transactions = parsed_file['transactions']
     verifications = parsed_file['verify-balances']
 
+    if (args.as_at):
+        if not is_valid_date(args.as_at):
+            sys.stderr.write("Invalid as-at-date: '%s'.\nExiting.\n" % args.as_at)
+            sys.exit(-1)
+        else:
+            print "# As at:", args.as_at
+
     if (args.first_date):
         if not is_valid_date(args.first_date):
             sys.stderr.write("Invalid first-date: '%s'.\nExiting.\n" % args.first_date)
@@ -832,6 +891,14 @@ def main():
     if (args.last_date):
         if not is_valid_date(args.last_date):
             sys.stderr.write("Invalid last-date: '%s'.\nExiting.\n" % args.last_date)
+            sys.exit(-1)
+        if args.first_date and (args.first_date > args.last_date):
+            sys.stderr.write("First date '%s' is after last-date: '%s'.\nExiting.\n"
+                             % (args.first_date, args.last_date))
+            sys.exit(-1)
+        if args.first_date and (args.first_date == args.last_date):
+            sys.stderr.write("First date '%s' same as last-date: '%s'.\nExiting.\n"
+                             % (args.first_date, args.last_date))
             sys.exit(-1)
         else:
             print "# Last date:", args.last_date
@@ -855,7 +922,7 @@ def main():
         print_transactions(relevant_transactions)
 
     if (args.print_balances):
-        print_single_unit_balances(transactions, args.print_stars_for_org_mode)
+        print_single_unit_balances(transactions, args.print_stars_for_org_mode, args.as_at, args.first_date, args.last_date)
 
     if (args.print_register):
         print_register(transactions, args.print_register, args.reverse_print_order, args.first_date, args.last_date)

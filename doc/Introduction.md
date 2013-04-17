@@ -18,11 +18,24 @@ The program is currently contained in a single python file. You can grab it and 
 git clone git://github.com/mafm/ledger.py
 cd ledger.py
 
-# Look at some examples
+# Generate some example reports
 ./ledger.py examples/sample.transactions --print-balances
 ./ledger.py examples/sample.transactions --print-register Expenses
 ./ledger.py examples/sample.transactions --print-register Expenses:Electricity
 ```
+
+## Outline
+
+The rest of this document is structured roughly like this:
+- [Input File](#the-input-file)
+  - [Transactions](#transactions)
+  - [Other things that can appear in the input file](#other-things-that-can-appear-in-the-input-file)
+     - [Instructions](#instructions)
+- [Reports](#reports)
+  - [Print Balances](#print-balances)
+  - [Print Register](#print-register)
+  - [Print Chart Of Accounts](#print-chart-of-accounts)
+  - [Print Transactions](#print-transactions)
 
 ## The Input File
 
@@ -103,16 +116,16 @@ transactions have correct dates.
 
 Dates should be written in [ISO format](http://xkcd.com/1179) like
 this: ```2013-02-28```. Ledger.py _will_ accept dates in other
-formats though, but it convert them to ISO format internally, and if
+formats, but it converts them to ISO format internally, and if
 you use the ```--print-transactions``` command, they will be printed
 that way.
 
-### Other things that can go in the input file
+### Other things that can appear in the input file
 
-Ledger.py's input file can contain some other optional information
-in addition to transactions:
-- comments
-- instructions
+In addition to transactions, ledger.py's input file can contain some
+other optional information:
+- comments, and
+- instructions.
 
 ### Comments
 
@@ -122,47 +135,47 @@ line, so you can't put a comment at the end of a line containing something else.
 
 ### Instructions
 
-Instructions let you tell ledger.py to do things like set default
-values, or check account balances are correct at particular dates. At
-the moment, the only instructions ledger.py accepts are
-VERIFY-BALANCE instructions. More will be added later to allow you to do
-other things like specify the default currency for an input file.
+'Instructions' let you tell ledger.py things like what the default
+currency should be, or that it should check that a particular account
+has the correct balance for a particular date. At the moment, the
+only instructions ledger.py knows about are 'verify-balance'
+instructions. More will be added later to allow you to do other things
+like specify the default currency for an input file, or tell ledger.py
+what the market value of an asset was at a particular date.
 
-#### VERIFY-BALANCE instructions
+#### Verify-Balance instructions
 
-You can get ledger.py to check that the balance in an account is
-correct at a particular date, by adding lines like this:
+To make sure that the balance in an account is
+correct at a particular date, you can add lines like this:
 ```
 VERIFY-BALANCE 2013-02-01 Assets:Bankwest:Cheque $621.05
 ```
 to an input file. When ledger.py reads the input file, it will
 complain and exit if the balance in the account is not as specified at
-the end of the specified date. You can use the option
+at the end of the day on the specified date. You can use the option
 ```--ignore-balance-verification-failure``` to prevent ledger.py
 quitting due to incorrect balances. This might be useful if you want to use
 ledger.py to examine the transactions and find the problem.
 
-You can also use the ``--verbose`` or
-``--show-balance-verifications``` options if you want to see an
+If you want to see an
 explicit confirmation that each of the verify-balance checks has been
-successful.
+successful, use the ``--verbose`` or
+``--show-balance-verifications``` options.
 
 ##### Where verify-balance instructions can be specified
 
-Unlike transactions, the verify-balance instructions in an input file do
-_not_ need to be written in date order. You can put them in any order
-you like, and you can also intermingle them with transactions if you
-want. For example, you could put all verify-balance instructions near
-the beginning of an input file, grouped by account name, and then by
-date if you wanted to.
+Unlike transactions, the verify-balance instructions in an input file
+do _not_ need to be written in date order. You can put them in any
+order you like, and you can also put them between transactions. If you want to, you can put all verify-balance instructions near the
+beginning of an input file, grouped by account name, and then by date.
 
-**Legder.py** extracts all verify-balance instructions from a file and
+Legder.py extracts all verify-balance instructions from a file and
 checks them against transactions once the file has been read
 completely.
 
-## Commands
+## Reports
 
-Ledger.py can generate the following reports from an input file:
+Ledger.py can generate reports from an input file using these main options:
 - --print-balances - show balances of accounts mentioned in the input file
 - --print-register - show a running balance for a specified account
 - --print-chart-of-accounts - show the current structure of the accounts
@@ -170,8 +183,11 @@ Ledger.py can generate the following reports from an input file:
 
 ### Print Balances
 
-This currently just shows the final balance of the accounts mentioned in the input file. There is some slightly
-clever formatting that shows any hierarchical structure in the account names.
+This shows the balances of the accounts listed in the input
+file. There is some slightly clever formatting that shows any
+hierarchical structure in the account names. The report can show the
+balance at a particular date, or on two different dates, along with
+the change between the dates.
 
 Relevant optional arguments:
 - ```--as-at <date>``` - print balances as at this date
@@ -193,7 +209,7 @@ are encountered.
 Relevant optional arguments:
 - ```--first-date <first-date>``` - don't print details for transactions before this date
 - ```--last-date <last-date>``` - don't print details for transactions after this date
-- ```--ignore-transactions-outside-dates``` - start the running balance from zero as at <first-date>, so balances
+- ```--ignore-transactions-outside-dates``` - start the running balance from zero as at ```<first-date>```, so balances
 shown for the relevant account will not reflect earlier transactions. By default, transactions before
 ```<first-date>``` _will_ affect the balance, but ledger.py will not print a line for those transactions
 in the ```--print-register``` report.

@@ -1,4 +1,4 @@
-# Why bother implementing something so similar to [Ledger](http://www.ledger-cli.org/)?
+# Why bother implementing something similar to [Ledger](http://www.ledger-cli.org/)?
 
 **Ledger.py** is like John Wiegley's
 [Ledger](http://www.ledger-cli.org/), but simpler.
@@ -6,7 +6,7 @@
 I used [ledger](http://www.ledger-cli.org/) for a while, and liked
 using an accounting system that accepted input files written in plain
 text, but there are several problems with
-[ledger](http://www.ledger-cli.org/) that make **ledger.py**
+[ledger](http://www.ledger-cli.org/) that make ledger.py
 worthwhile.
 
 ## Fragile Syntax
@@ -24,12 +24,14 @@ In particular, [ledger](http://www.ledger-cli.org/) fails silently instead of co
   what I wanted.
 
 I also didn't like the way Ledger automatically fills in the amount
-for one posting if all the other postings of a transaction have
+for one posting if all the other postings in a transaction have
 explicit amounts. Sometimes I attempted to manually write an amount
 for a posting, but got the syntax wrong by leaving only a single space
-between the account and the posted amount, and ledger automatically
-calculated an amount that was different to the one I had manually
-attempted to specify.
+between the account name and the amount (ledger needs at least two
+spaces). When I did this, ledger would automatically calculate an
+amount for the posting that was **different** to the one I had
+manually attempted to specify without warning there was a problem with
+the amount I had manually written.
 
 None of these problems are unmanageable, but I spent more time
 checking and re-checking input data than I expected to.
@@ -85,11 +87,11 @@ have the desired effect):
 
 [Describing transactions in terms of debits and credits]
 (http://en.wikipedia.org/wiki/Debits_and_credits) _is_ pointlessly
-complicated, but writing transactions using the normal accounting
+confusing, but writing transactions using the normal accounting
 conventions (where an increase in a liability will balance an equal
-increase in an expense account) simplifies things.
+increase in an expense account) helps minimise confusion.
 
-**Ledger.py** understands that accounts on the left-hand side of the
+Ledger.py understands that accounts on the left-hand side of the
 accounting equation are different to (and balance against) the
 accounts on the right-hand side. This means that you can represent
 the Exxon transaction in the normal way, like this:
@@ -107,5 +109,15 @@ and it seemed simpler to implement the relevant code in python than
 to build something on top of [ledger](http://www.ledger-cli.org/) to
 do what I wanted.
 
-I should give some examples here, but probably haven't implemented the
-relevant reports yet.
+For example, ledger.py's --print-balances report can take two dates,
+and show the balances at those dates, and the changes between them. As
+far as I know there's no equally simple way to do that in
+[ledger](http://www.ledger-cli.org/), despite
+[ledger](http://www.ledger-cli.org/)'s much greater complexity.
+
+## Ledger is _way_ more complicated.
+
+You probably can ignore most of the complexity if you don't need it,
+but [Ledger](http://www.ledger-cli.org/) is [much more
+complicated](http://www.ledger-cli.org/3.0/doc/ledger3.html#Detailed-Options-Description)
+than ledger.py.

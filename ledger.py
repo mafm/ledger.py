@@ -284,15 +284,18 @@ def print_transactions(transactions):
 
 def ensure_balanced(transactions):
     "Complain and exit if transaction isn't balanced."
+    problem_found = False
     for transaction in transactions:
         if (not is_balanced(transaction)):
-            sys.stderr.write("Line %d: Transaction dated: '%s', description: '%s' is imbalanced.\n" %
+            problem_found = True
+            sys.stderr.write("Line %d: Transaction does not balance. Date: '%s', description: %s.\n" %
                              (transaction['line'],transaction['date'],transaction['description']))
             for amount in balance_amounts(transaction):
                 if amount['quantity'] != 0:
-                    sys.stderr.write("Imbalance amount: %s.\n" % format_amount(amount))
-            sys.stderr.write("Exiting.\n")
-            sys.exit(-1)
+                    sys.stderr.write(" Imbalance amount: %s.\n" % format_amount(amount))
+    if problem_found:
+        sys.stderr.write("Exiting.\n")
+        sys.exit(-1)
 
 def ensure_date_sorted(transactions):
     "Make sure transactions are date sorted. Exit if not."

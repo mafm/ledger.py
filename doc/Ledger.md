@@ -104,22 +104,25 @@ the Exxon transaction in the normal way, like this:
 ## Ledger is _way_ more complicated than ledger.py
 
 You probably can ignore most of the complexity if you don't need it,
-but [Ledger](http://www.ledger-cli.org/) is [much more
-complicated](http://www.ledger-cli.org/3.0/doc/ledger3.html#Detailed-Options-Description)
+but [Ledger](http://www.ledger-cli.org/) is [much]
+(http://www.ledger-cli.org/3.0/doc/ledger3.html#Detailed-Options-Description)
+[more](http://www.ledger-cli.org/3.0/doc/ledger3.html#Virtual-postings)
+[complicated](http://www.ledger-cli.org/3.0/doc/ledger3.html#Automated-Transactions)
 than ledger.py.
 
 ## Extra Operations/Reports
 
-Despite [ledger](http://www.ledger-cli.org/)'s complexity, there are important things you
-can't easily do with it. I wanted to generate several reports that
-[ledger](http://www.ledger-cli.org/) didn't support out of the box,
-and it seemed simpler to implement the relevant code in python than
-to build something on top of [ledger](http://www.ledger-cli.org/) to
-do what I wanted.
+Despite [ledger](http://www.ledger-cli.org/)'s complexity, there are important simple things you
+can't easily do with it.
 
 For example, ledger.py's --print-balances report can take two dates,
 and show the balances at those dates, and the changes between them.
 [There's no way to simple way to generate a report like that using ledger]
 (http://comments.gmane.org/gmane.comp.finance.ledger.general/4893), despite
-[ledger](http://www.ledger-cli.org/)'s much complexity.
+[ledger](http://www.ledger-cli.org/)'s much greater complexity.
 
+I wanted to generate several reports that
+[ledger](http://www.ledger-cli.org/) didn't support out of the box,
+and it seemed simpler to implement the relevant code in python than
+to build something on top of [ledger](http://www.ledger-cli.org/) to
+do what I wanted.

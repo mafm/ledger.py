@@ -183,15 +183,21 @@ Ledger.py can generate reports from an input file using these main options:
 
 ### Print Balances
 
-This shows the balances of the accounts listed in the input
-file. There is some slightly clever formatting that shows any
-hierarchical structure in the account names. The report can show the
-balance at a particular date, or on two different dates, along with
-the change between the dates.
+This shows the balances of the accounts listed in the input file with
+intelligent indentation that shows hierarchical structure within the
+account.
+
+This report can show either:
+- balances with _all_ available transactions included,
+- balances including transactions up to a certain date, or
+- balances on two different dates and the changes between those.
+You can also give a list of account names to include in the report. If
+you do this, all other accounts will be ignored.
 
 Relevant optional arguments:
+- ```<account-name> ... <account-name>``` - list of accounts to print balances for
 - ```--as-at <date>``` - print balances as at this date
-- ```--first-date <last-date>``` and  ```--last-date <last-date>```- print balances at these two dates, and the difference between them.
+- ```--first-date <last-date>``` and  ```--last-date <last-date>```- print balances at these two dates, and the difference between them
 
 Examples:
 ```
@@ -199,6 +205,9 @@ Examples:
 ./ledger.py examples/sample.transactions --print-balances --as-at 2013-01-05
 ./ledger.py examples/sample.transactions --print-balances --as-at 2013-01-15
 ./ledger.py examples/sample.transactions --print-balances --first-date 2013-01-05 --last-date 2013-01-15
+./ledger.py examples/sample.transactions --print-balances assets expenses --as-at 2013-01-15
+./ledger.py examples/sample.transactions --print-balances assets expenses:motor --as-at 2013-01-15
+./ledger.py examples/sample.transactions --print-balances  --print-balances expenses assets --first-date 2013-01-05 --last-date 2013-03-02
 ```
 
 ### Print Register

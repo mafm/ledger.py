@@ -640,16 +640,38 @@ def account_tree_from_account_strings(account_strings):
         _ensure_sub_accounts(account_string, root)
     return root['sub_accounts']
 
+def find_original_prefix(account_string, account_tree):
+    "Return the original prefix of the account in tree specified by account_string."
+    try:
+        components = account_string_components(account_string)['regular']
+        account_name = components[0]
+        account_tree = account_tree[account_name]
+        result = ""
+        while len(components) > 1:
+            components = components[1:]
+            account_name = components[0]
+            result += account_tree['name']
+            account_tree = account_tree['sub_accounts'][account_name]
+        if len(result) > 0:
+            result += ":"
+        return result
+    except KeyError:
+        raise ValueError("Account not found: '%s'"%account_string)
+
 def find_account(account_string, account_tree):
     "Return the part of account_tree named by account_string."
-    components = account_string_components(account_string)['regular']
-    account_name = components[0]
-    account_tree = account_tree[account_name]
-    while len(components) > 1:
-        components = components[1:]
+
+    try:
+        components = account_string_components(account_string)['regular']
         account_name = components[0]
-        account_tree = account_tree['sub_accounts'][account_name]
-    return account_tree
+        account_tree = account_tree[account_name]
+        while len(components) > 1:
+            components = components[1:]
+            account_name = components[0]
+            account_tree = account_tree['sub_accounts'][account_name]
+        return account_tree
+    except KeyError:
+        raise ValueError("Account not found: '%s'"%account_string)
 
 def account_and_parents(account_string, account_tree):
     "Return nodes of account_tree that related to account_string or it's parents."
@@ -700,13 +722,25 @@ def calculate_balances(transactions, as_at_date):
                 book_posting(posting, account_tree)
     return account_tree
 
-def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars_for_org_mode=False):
+def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent=0, print_stars_for_org_mode=False):
     """Internal.
 
     Return list of (amount, account-name) string pairs showing a/c structure."""
+
     result = []
+
+    if len(account_names) > 0:
+        for account_name in account_names:
+            account = find_account(account_name, accounts_dict)
+            result += single_unit_balances_helper({account['name']: account}, [],
+                                                  prefix=find_original_prefix(account_name, accounts_dict),
+                                                  indent=indent,
+                                                  print_stars_for_org_mode=print_stars_for_org_mode)
+        return result
+    ## else account_names = [] => print for all accounts
     accounts =  accounts_dict.keys()
     accounts.sort()
+
     for account in accounts:
         account_name = accounts_dict[account]['name']
         sub_accounts = accounts_dict[account]['sub_accounts'].keys()
@@ -720,57 +754,63 @@ def single_unit_balances_helper(accounts_dict, prefix= "", indent=0, print_stars
         if len(sub_accounts) == 0:
             result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
         elif (len(sub_accounts) == 1 and not has_own_postings):
-            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent, print_stars_for_org_mode)
+            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], prefix+account_name+":", indent, print_stars_for_org_mode)
         else:
             result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
-            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], "", indent+1, print_stars_for_org_mode)
+            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1, print_stars_for_org_mode)
     return result
 
-def print_single_unit_balances(transactions, print_stars_for_org_mode, as_at_date, first_date, last_date):
-    "Print balances of accounts. Assumes only 1 unit/ccy per account."
 
+def validate_one_date_or_two(as_at_date, first_date, last_date):
     if (as_at_date):
         # If you specify as-at-date, you can't specify first or last dates
         if first_date:
-            sys.stderr.write("Error in print_single_unit_balances:\n"
-                             " first-date: %s specified in addition to as-at-date '%s'.\n"
+            sys.stderr.write("Error: first-date: %s specified in addition to as-at-date '%s'.\n"
                              "Exiting."%(first_date, as_at_date))
             sys.exit(-1)
         if last_date:
-            sys.stderr.write("Error in print_single_unit_balances:\n"
-                             " last-date: %s specified in addition to as-at-date '%s'.\n"
+            sys.stderr.write("Error: last-date: %s specified in addition to as-at-date '%s'.\n"
                              "Exiting."%(last_date, as_at_date))
             sys.exit(-1)
 
     if (first_date):
         # If you specify first date, also need last-date, and no as-at-date.
         if not last_date:
-            sys.stderr.write("Error in print_single_unit_balances:\n"
-                             " first-date: %s specified, but last-date unspecified.\n"
+            sys.stderr.write("Error: first-date: %s specified, but last-date unspecified.\n"
                              "Exiting."%(first_date))
             sys.exit(-1)
     if last_date:
         if not first_date:
-            sys.stderr.write("Error in print_single_unit_balances:\n"
-                             " last-date: %s specified, but first-date unspecified.\n"
+            sys.stderr.write("Error: last-date: %s specified, but first-date unspecified.\n"
                              "Exiting."%(last_date))
             sys.exit(-1)
+
+def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
+    """Print balances of accounts. Assumes only 1 unit/ccy per account.
+
+    If account_names = [], assume all accounts, otherwise just the specified accounts.
+    """
+
+    validate_one_date_or_two(as_at_date, first_date, last_date)
 
     if (not first_date) and (not last_date):
 
         transactions = filter_by_date(transactions, last_date = as_at_date)
         balance_text = single_unit_balances_helper(calculate_balances(transactions, as_at_date),
+                                                   account_names,
                                                    print_stars_for_org_mode=print_stars_for_org_mode)
         for line in join_columns(justify_columns(balance_text, "LRL")):
             print line
     if first_date and last_date:
         transactions = filter_by_date(transactions, last_date = last_date)
         first_text = single_unit_balances_helper(calculate_balances(transactions, first_date),
+                                                 account_names,
                                                  print_stars_for_org_mode=print_stars_for_org_mode)
         last_text = single_unit_balances_helper(calculate_balances(transactions, last_date),
+                                                account_names,
                                                 print_stars_for_org_mode=False)
 
-        new_text = [(first_text[0][0], first_date, last_date, "Change","Account")] # )(first_date, last_date, "difference")]
+        new_text = [(first_text[0][0], first_date, last_date, "Change","Account")]
         for i in range(len(first_text)):
             new_text += [tuple(list(first_text[i][:2]) + [last_text[i][1]]
                                + [format_amount(difference_nil_or_single_unit_amount(parse_amount(last_text[i][1]),
@@ -780,6 +820,7 @@ def print_single_unit_balances(transactions, print_stars_for_org_mode, as_at_dat
         for line in join_columns(justify_columns(new_text , "LRRRL")):
             print line
             format_amount(difference_nil_or_single_unit_amount(parse_amount("-$1,900.00"), parse_amount("$1,900.00")))
+
 def calculate_register(transactions, account_string, first_date, last_date):
     "Calculate text showing effect of transactions on relevant account."
     result = []
@@ -843,10 +884,10 @@ def main():
                         default=False,
                         action="store_true",
                         help="print structure of account hierarchy found in FILE")
-    parser.add_argument('--print-balances',
-                        default=False,
-                        action="store_true",
-                        help="print balances and structure of account hierarchy found in FILE")
+    parser.add_argument('--print-balances', nargs='*', metavar='ACCOUNT',
+                        help="print balances or specified accounts. (All accounts if none specified.)")
+    # parser.add_argument('--balance', nargs='*', metavar='ACCOUNT',
+    #                     help='show account balances (all accounts if none specified)')
     parser.add_argument('--print-stars-for-org-mode',
                         default=False,
                         action="store_true",
@@ -924,8 +965,9 @@ def main():
         relevant_transactions = filter_by_date(transactions, args.first_date, args.last_date)
         print_transactions(relevant_transactions)
 
-    if (args.print_balances):
-        print_single_unit_balances(transactions, args.print_stars_for_org_mode, args.as_at, args.first_date, args.last_date)
+
+    if (args.print_balances <> None):
+        print_single_unit_balances(transactions, args.print_balances, args.print_stars_for_org_mode, args.as_at, args.first_date, args.last_date)
 
     if (args.print_register):
         print_register(transactions, args.print_register, args.reverse_print_order, args.first_date, args.last_date)

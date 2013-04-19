@@ -821,25 +821,39 @@ def print_single_unit_balances(transactions, account_names, print_stars_for_org_
             print line
             format_amount(difference_nil_or_single_unit_amount(parse_amount("-$1,900.00"), parse_amount("$1,900.00")))
 
-def calculate_register(transactions, account_string, first_date, last_date):
+def calculate_register(transactions, account_string, include_related_postings, first_date, last_date):
     "Calculate text showing effect of transactions on relevant account."
     result = []
     transactions = filter_by_account(transactions, account_string)
     account_tree = account_tree_from_transactions(transactions)
     for transaction in transactions:
-        for posting in filter_by_account(transaction['postings'], account_string):
-            book_posting(posting, account_tree)
+        is_first_posting = True
+        for posting in transaction['postings']:
+            if affects(posting, account_string):
+                book_posting(posting, account_tree)
             if (((not first_date) or (transaction['date'] >= first_date)) and
                 ((not last_date) or (transaction['date'] <= last_date))):
-                result += [(transaction['date'],
-                            format_single_unit_amount(find_account(account_string, account_tree)['balances']),
-                            format_amount(posting['amount']),
-                            posting['account'],
-                            transaction['description'])]
+                if is_first_posting:
+                    date_string = transaction['date']
+                    description_string = transaction['description']
+                else:
+                    date_string = ""
+                    description_string = ""
+                if affects(posting, account_string):
+                    balance_string = format_single_unit_amount(find_account(account_string, account_tree)['balances'])
+                else:
+                    balance_string = ""
+                if affects(posting, account_string) or include_related_postings:
+                    result += [(date_string,
+                                balance_string,
+                                format_amount(posting['amount']),
+                                posting['account'],
+                                description_string)]
+                is_first_posting = False
     return result
 
-def print_register(transactions, account_string, reverse_print_order, first_date, last_date):
-    data = calculate_register(transactions, account_string, first_date, last_date)
+def print_register(transactions, account_string, include_related_postings, reverse_print_order, first_date, last_date):
+    data = calculate_register(transactions, account_string, include_related_postings, first_date, last_date)
     data = rjust_column(data, 0)
     data = rjust_column(data, 1)
     data = rjust_column(data, 2)
@@ -896,6 +910,10 @@ def main():
                         default=False,
                         action="store_true",
                         help="Reverse order lines are printed (--print-xyz)")
+    parser.add_argument('--include-related-postings',
+                        default=False,
+                        action="store_true",
+                        help="show whole transactions, not just the relevant posting (--print-register)")
 
     # parser.add_argument('--balance', nargs='*', metavar='ACCOUNT',
     #                     help='show account balances (all accounts if none specified)')
@@ -970,7 +988,7 @@ def main():
         print_single_unit_balances(transactions, args.print_balances, args.print_stars_for_org_mode, args.as_at, args.first_date, args.last_date)
 
     if (args.print_register):
-        print_register(transactions, args.print_register, args.reverse_print_order, args.first_date, args.last_date)
+        print_register(transactions, args.print_register, args.include_related_postings, args.reverse_print_order, args.first_date, args.last_date)
 
 if __name__ == "__main__":
     main()

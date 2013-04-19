@@ -215,9 +215,13 @@ Examples:
 This shows the transactions affecting an account, and the running balance of that account as the transactions
 are encountered.
 
+Mandatory argument:
+- ```<account>``` the account whose register is to be printed.
+
 Relevant optional arguments:
-- ```--first-date <first-date>``` - don't print details for transactions before this date
+- ```--first-date <first-date>``` - don't print details for transactions before this date.
 - ```--last-date <last-date>``` - don't print details for transactions after this date
+- ```--include-related-postings``` - print all postings in transactions affecting <account>. Without this option, only parts of the transaction that affect <account> will be shown.
 - ```--ignore-transactions-outside-dates``` - start the running balance from zero as at ```<first-date>```, so balances
 shown for the relevant account will not reflect earlier transactions. By default, transactions before
 ```<first-date>``` _will_ affect the balance, but ledger.py will not print a line for those transactions
@@ -230,6 +234,7 @@ Examples:
 ./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10
 ./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10 --ignore-transactions-outside-dates
 ./ledger.py examples/sample.transactions --print-register Expenses --first-date 2013-01-10 --last-date 2013-01-12
+./ledger.py examples/sample.transactions --print-register expenses --include-related-postings
 ```
 Note that if you specify an account that has sub-accounts, transactions affecting the sub-accounts will be shown,
 but the running balances shown will be the balance for the specified account, not the balance for the

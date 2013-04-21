@@ -83,7 +83,7 @@ Account names should not contain whitespace characters, and can be a
 colon separated sequence of names that reflect a hierarchical
 structure amount accounts. The first component of an account name
 should be designate one of the [five basic account
-types](the-accounting-equation).
+types](#the-accounting-equation).
 
 #### The accounting equation
 
@@ -221,7 +221,7 @@ Mandatory argument:
 Relevant optional arguments:
 - ```--first-date <first-date>``` - don't print details for transactions before this date.
 - ```--last-date <last-date>``` - don't print details for transactions after this date
-- ```--include-related-postings``` - print all postings in transactions affecting <account>. Without this option, only parts of the transaction that affect <account> will be shown.
+- ```--include-related-postings``` - print all postings in transactions affecting <account>. Without this option, only parts of the transaction that affect ```<account>``` will be shown.
 - ```--ignore-transactions-outside-dates``` - start the running balance from zero as at ```<first-date>```, so balances
 shown for the relevant account will not reflect earlier transactions. By default, transactions before
 ```<first-date>``` _will_ affect the balance, but ledger.py will not print a line for those transactions

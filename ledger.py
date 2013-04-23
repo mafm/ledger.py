@@ -827,13 +827,13 @@ def calculate_register(transactions, account_string, include_related_postings, f
     transactions = filter_by_account(transactions, account_string)
     account_tree = account_tree_from_transactions(transactions)
     for transaction in transactions:
-        is_first_posting = True
+        first_posting_output = False
         for posting in transaction['postings']:
             if affects(posting, account_string):
                 book_posting(posting, account_tree)
             if (((not first_date) or (transaction['date'] >= first_date)) and
                 ((not last_date) or (transaction['date'] <= last_date))):
-                if is_first_posting:
+                if not first_posting_output or (affects(posting, account_string) and not include_related_postings):
                     date_string = transaction['date']
                     description_string = transaction['description']
                 else:
@@ -844,12 +844,13 @@ def calculate_register(transactions, account_string, include_related_postings, f
                 else:
                     balance_string = ""
                 if affects(posting, account_string) or include_related_postings:
+                    first_posting_output = True
                     result += [(date_string,
                                 balance_string,
                                 format_amount(posting['amount']),
                                 posting['account'],
                                 description_string)]
-                is_first_posting = False
+
     return result
 
 def print_register(transactions, account_string, include_related_postings, reverse_print_order, first_date, last_date):

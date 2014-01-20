@@ -405,7 +405,7 @@ def verify_balances(transactions, verifications, verbose, exit_on_failure):
     verifications = sorted(verifications, key=lambda x: x['date'])
     account_tree = account_tree_from_transactions(transactions)
     for transaction in transactions:
-        if len(verifications) > 0 and transaction['date'] > verifications[0]['date']:
+        while len(verifications) > 0 and transaction['date'] > verifications[0]['date']:
 
             verify_balance(verifications[0], account_tree, verbose)
             verifications = verifications[1:]

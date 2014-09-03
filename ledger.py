@@ -859,6 +859,7 @@ def validate_one_date_or_two(as_at_date, first_date, last_date):
             sys.exit(-1)
 
 def write_balances_to_excel(transactions, dates):
+    TXN_COLOUR = 7
     ## XXX: Should allow list of accounts to be named.
     dates = sorted(dates)
     num_dates = len(dates)
@@ -882,6 +883,10 @@ def write_balances_to_excel(transactions, dates):
     heading_font = easyxf("font: bold on")
     ## Like accounting, but red for -ve numbers
     value_font = easyxf('', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    txn_value_font = easyxf('pattern: pattern solid;', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    txn_value_font.pattern.pattern_fore_colour = TXN_COLOUR
+    txn_text_font = easyxf('pattern: pattern solid;')
+    txn_text_font.pattern.pattern_fore_colour = TXN_COLOUR
     ## Like heading, but right-aligned
     column_heading_style = easyxf("font: bold on")
     alignment = xlwt.Alignment()
@@ -926,7 +931,6 @@ def write_balances_to_excel(transactions, dates):
         acc_index = 0
         assert (len(balances_at[date])== num_lines), "Expected {} lines found {} on {}".format(num_lines, len(balances_at[date]), date)
         for line in balances_at[date]:
-            print "acc_index:", acc_index, "indent:", line.indent, "row:", row
             values_dict[(date_index, row)] = line.balance
             if date_index == 0:
                 account_names_dict[acc_index] = line.account_name
@@ -966,46 +970,58 @@ def write_balances_to_excel(transactions, dates):
         postings = balances_at[dates[-1]][acc_index].postings
         for p_index in range(len(postings)):
             row = row_dict[acc_index] + p_index + 1
+            ## Colour column between balances and differences
+            ws.write(row,
+                     num_dates,
+                     "",
+                     txn_text_font)
             txn_id_col = num_dates * 2 + 2+max_indent+1
-            print "ac", acc_index, "row:", row_dict[acc_index] + p_index + 1, "txn:", postings[p_index].transaction_id
+            for col in range(2*num_dates+1, txn_id_col):
+                ws.write(row,
+                         col,
+                         "",
+                         txn_text_font)
             ws.write(row,
                      txn_id_col,
-                     "txn:{}:".format(postings[p_index].transaction_id))
+                     "txn:{}:".format(postings[p_index].transaction_id),
+                     txn_text_font)
             ws.write(row,
                      txn_id_col+1,
-                     postings[p_index].date)
+                     postings[p_index].date,
+                     txn_text_font)
             ws.write(row,
                      txn_id_col+2,
-                     postings[p_index].comment)
+                     postings[p_index].comment,
+                     txn_text_font)
             ## Write total amount for each date
             for date_index in range(len(dates)):
                 if postings[p_index].date <= dates[date_index]:
-                    ws.write(row, date_index, postings[p_index].amount['quantity'] * 0.01, value_font)
+                    ws.write(row, date_index, postings[p_index].amount['quantity'] * 0.01, txn_value_font)
                 else:
-                    ws.write(row, date_index, 0, value_font)
+                    ws.write(row, date_index, 0, txn_value_font)
             ## Write difference amount for each date after first
             for date_index in range(1, num_dates):
                 if postings[p_index].date > dates[date_index-1] and postings[p_index].date <= dates[date_index]:
                     ws.write(row,
                              date_index+num_dates,
                              postings[p_index].amount['quantity'] * 0.01,
-                             value_font)
+                             txn_value_font)
                 else:
                     ws.write(row,
                              date_index+num_dates,
                              0,
-                             value_font)
+                             txn_value_font)
             ## Write "Total Difference" for final date
             if postings[p_index].date > dates[0] and postings[p_index].date <= dates[-1]:
                 ws.write(row,
                          2*num_dates,
                          postings[p_index].amount['quantity'] * 0.01,
-                         value_font)
+                         txn_value_font)
             else:
                 ws.write(row,
                          2*num_dates,
                          0,
-                         value_font)
+                         txn_value_font)
     ## Set line indent
     for row in sorted(indent_dict.keys()):
         ws.row(row).level = indent_dict[row]

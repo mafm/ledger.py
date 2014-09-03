@@ -849,19 +849,24 @@ def write_balances_to_excel(transactions, dates):
     ws = wb.add_sheet('Balances')
     ## Create some fonts we'll need
     heading_font = easyxf("font: bold on")
-    # Like accounting, but red for -ve numbers
+    ## Like accounting, but red for -ve numbers
     value_font = easyxf('', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    ## Like heading, but right-aligned
+    column_heading_style = easyxf("font: bold on")
+    alignment = xlwt.Alignment()
+    alignment.horz = xlwt.Alignment.HORZ_RIGHT
+    column_heading_style.alignment = alignment
     # Put headings into worksheet
     ws.write(0, 0, "Balances", heading_font)
     ws.write(0, num_dates+1, "Differences", heading_font)
     ws.write(0, num_dates * 2 + 2, "Account", heading_font)
-    ws.write(1, num_dates * 2, "Total", heading_font)
+    ws.write(1, num_dates * 2, "Total", column_heading_style)
     ## Write date headings for balances
     for date_index in range(len(dates)):
-        ws.write(1, date_index, dates[date_index], heading_font)
+        ws.write(1, date_index, dates[date_index], column_heading_style)
     ## Write date headings for balances
     for date_index in range(1, len(dates)):
-        ws.write(1, date_index+num_dates, dates[date_index], heading_font)
+        ws.write(1, date_index+num_dates, dates[date_index], column_heading_style)
     ## Freeze Panes
     ws.set_panes_frozen(True)
     ws.set_horz_split_pos(2)
@@ -874,7 +879,6 @@ def write_balances_to_excel(transactions, dates):
         date = dates[date_index]
         line_index = 0
         for line in balances_at[date]:
-            print "**", date_index, line_index, line.balance
             values_dict[(date_index, line_index)] = line.balance
             if date_index == 0:
                 account_names_dict[line_index] = line.account_name

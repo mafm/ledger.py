@@ -578,11 +578,11 @@ def chart_of_accounts(accounts_dict, prefix= "", indent=""):
     for account in accounts:
         account_name = accounts_dict[account]['name']
         sub_accounts = accounts_dict[account]['sub_accounts'].keys()
-        has_own_postings = accounts_dict[account]['has_own_postings']
+        postings = accounts_dict[account]['own_postings']
 
         if len(sub_accounts) == 0:
             result += [indent + prefix + account_name]
-        elif (len(sub_accounts) == 1 and not has_own_postings):
+        elif (len(sub_accounts) == 1 and not postings):
             result += chart_of_accounts(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent)
         else:
             result += [indent + prefix + account_name]
@@ -603,26 +603,40 @@ def account_string_components(account_string):
     return {'original' : original,
             'regular': regular}
 
-def _make_account(name):
-    "Build a dictionary that functions as an account_tree structure."
-    return {'name': name,
-            'sub_accounts' : {},
-            'balances' : {},
-            'has_own_postings' : False}
 
-def _ensure_sub_account(account,
+AccountTreeNode = namedtuple('AccountTreeNode',
+                             ['original_name',
+                              'sub_accounts',
+                              'balances',
+                              'postings'])
+Posting = namedtuple('Posting', ['date', 'amount', 'account', 'comment', 'transaction_id'])
+
+def _make_account(original_name):
+    "Build a dictionary that functions as an account_tree structure."
+    return AccountTreeNode(original_name=original_name,
+                           sub_accounts={},
+                           balances={},
+                           ## Transactions in postings may or may not
+                           ## be reflected in the balances. If we are
+                           ## processing a range of possibly
+                           ## future-dated transactions, we might have
+                           ## the postings there, but not apply them
+                           ## to the balance.
+                           postings=[])
+
+def _ensure_sub_account(account_node,
                         sub_account_regular_name,
                         sub_account_original_name):
     "Internal. Make sure account is direct descendant of account, and return it."
-    if not account['sub_accounts'].has_key(sub_account_regular_name):
-        account['sub_accounts'][sub_account_regular_name] = _make_account(sub_account_original_name)
-    return account['sub_accounts'][sub_account_regular_name]
+    if not account_node.sub_accounts.has_key(sub_account_regular_name):
+        account_node.sub_accounts[sub_account_regular_name] = _make_account(sub_account_original_name)
+    return account_node.sub_accounts[sub_account_regular_name]
 
-def _ensure_sub_accounts(account_string, root_account):
-    """Internal. Ensure all of account_string's components are present under root.
+def _ensure_sub_accounts(posting, root_account):
+    """Internal. Ensure transaction POSTING has a leaf not in the account tree.
 
-    We also mark the leaf node as having its own postings."""
-
+    We also add the transaction to the leaf node's postings."""
+    account_string = posting.account
     components = account_string_components(account_string)
     original = components['original']
     regular = components['regular']
@@ -630,24 +644,28 @@ def _ensure_sub_accounts(account_string, root_account):
     while len(original) > 0:
         account = _ensure_sub_account(account, regular[0], original[0])
         if len(original) == 1:
-            account['has_own_postings'] = True
+            account.postings.append(posting)
         original = original[1:]
         regular = regular[1:]
 
 def account_tree_from_transactions(transactions):
-    "Build account tree structure from transactions."
+    """Build account tree structure from transactions.
+
+    Does not actually post transactions to account. Constructed tree
+    structure will be correct, but balances will be empty.
+    """
     root = _make_account('')
+    txn_count = 0
     for transaction in transactions:
         for posting in transaction['postings']:
-            _ensure_sub_accounts(posting['account'], root)
-    return root['sub_accounts']
-
-def account_tree_from_account_strings(account_strings):
-    "Build account tree structure from list of account_strings."
-    root = _make_account('')
-    for account_string in account_strings:
-        _ensure_sub_accounts(account_string, root)
-    return root['sub_accounts']
+            _ensure_sub_accounts(Posting(date=transaction['date'],
+                                         amount=posting['amount'],
+                                         account=posting['account'],
+                                         comment=transaction['description'],
+                                         transaction_id=txn_count),
+                                 root)
+        txn_count+=1
+    return root.sub_accounts
 
 def find_original_prefix(account_string, account_tree):
     "Return the original prefix of the account in tree specified by account_string."
@@ -659,8 +677,8 @@ def find_original_prefix(account_string, account_tree):
         while len(components) > 1:
             components = components[1:]
             account_name = components[0]
-            result += account_tree['name']
-            account_tree = account_tree['sub_accounts'][account_name]
+            result += account_tree.original_name
+            account_tree = account_tree.sub_accounts[account_name]
         if len(result) > 0:
             result += ":"
         return result
@@ -677,7 +695,7 @@ def find_account(account_string, account_tree):
         while len(components) > 1:
             components = components[1:]
             account_name = components[0]
-            account_tree = account_tree['sub_accounts'][account_name]
+            account_tree = account_tree.sub_accounts[account_name]
         return account_tree
     except KeyError:
         raise ValueError("Account not found: '%s'"%account_string)
@@ -708,15 +726,17 @@ def account_string_and_parents(account_string):
 def book_posting(posting, account_tree):
     "Update balances in account_tree using account & amount from posting."
 
-    amount = posting['amount']
+    amount = posting.amount
     units = amount['units']
     quantity = amount['quantity']
-    account_string = posting['account']
+    account_string = posting.account
 
-    find_account(account_string, account_tree)['has_own_postings'] = True
+    leaf_account = find_account(account_string, account_tree)
+    if not posting in leaf_account.postings:
+        leaf_account.postings.append(posting)
 
     for account in account_and_parents(account_string, account_tree):
-        balances = account['balances']
+        balances = account.balances
         if balances.has_key(units):
             balances[units]['quantity'] += quantity
         else:
@@ -725,10 +745,17 @@ def book_posting(posting, account_tree):
 def calculate_balances(transactions, as_at_date):
     "Return account tree with balances from transactions."
     account_tree = account_tree_from_transactions(transactions)
+    txn_count = 0
     for transaction in transactions:
         if ((not as_at_date) or (transaction['date'] <= as_at_date)):
             for posting in transaction['postings']:
-                book_posting(posting, account_tree)
+                book_posting(Posting(date=transaction['date'],
+                                         amount=posting['amount'],
+                                         account=posting['account'],
+                                         comment=transaction['description'],
+                                         transaction_id=txn_count),
+                             account_tree)
+        txn_count+=1
     return account_tree
 
 def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent=0, print_stars_for_org_mode=False):
@@ -769,7 +796,7 @@ def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent
             result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1, print_stars_for_org_mode)
     return result
 
-BalanceReportLine = namedtuple('account_name', 'balance', 'indent')
+BalanceReportLine = namedtuple('BalanceReportLine', ['account_name', 'balance', 'indent', 'postings'])
 
 def single_unit_report_helper(accounts_dict, account_names=None, prefix= "", indent=0):
     """Internal.
@@ -787,22 +814,24 @@ def single_unit_report_helper(accounts_dict, account_names=None, prefix= "", ind
     accounts =  accounts_dict.keys()
     accounts.sort()
     for account in accounts:
-        account_name = accounts_dict[account]['name']
-        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
-        balances  = accounts_dict[account]['balances']
-        has_own_postings = accounts_dict[account]['has_own_postings']
+        account_name = accounts_dict[account].original_name
+        sub_accounts = accounts_dict[account].sub_accounts.keys()
+        balances  = accounts_dict[account].balances
+        postings = accounts_dict[account].postings
         balance = extract_single_unit_quantity(balances)
         if len(sub_accounts) == 0:
             result.append(BalanceReportLine(account_name = prefix + account_name,
                                             balance = balance,
-                                            indent = indent))
-        elif (len(sub_accounts) == 1 and not has_own_postings):
-            result += single_unit_report_helper(accounts_dict[account]['sub_accounts'], [], prefix+account_name+":", indent)
+                                            indent = indent,
+                                            postings=postings))
+        elif (len(sub_accounts) == 1 and not postings):
+            result += single_unit_report_helper(accounts_dict[account].sub_accounts, [], prefix+account_name+":", indent)
         else:
             result.append(BalanceReportLine(account_name = prefix + account_name,
                                             balance = balance,
-                                            indent = indent))
-            result += single_unit_report_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1)
+                                            indent = indent,
+                                            postings=postings))
+            result += single_unit_report_helper(accounts_dict[account].sub_accounts, [], "", indent+1)
     return result
 
 def validate_one_date_or_two(as_at_date, first_date, last_date):
@@ -839,10 +868,12 @@ def write_balances_to_excel(transactions, dates):
         ## instead of dieing...
         sys.stderr.write("No dates specified.\nExiting.")
         sys.exit(-1)
+    transactions = filter_by_date(transactions, last_date = dates[-1])
     ## Get sorted list of dates/accounts/balances for each date
     balances_at = {}
     for date in dates:
         balances_at[date] = single_unit_report_helper(calculate_balances(transactions, date))
+        max_indent = max([line.indent for line in balances_at[date]])
     num_lines = len(balances_at[dates[0]])
     ## Create Sheet
     wb = Workbook()
@@ -859,8 +890,11 @@ def write_balances_to_excel(transactions, dates):
     # Put headings into worksheet
     ws.write(0, 0, "Balances", heading_font)
     ws.write(0, num_dates+1, "Differences", heading_font)
-    ws.write(0, num_dates * 2 + 2, "Account", heading_font)
     ws.write(1, num_dates * 2, "Total", column_heading_style)
+    ws.write(0, num_dates * 2 + 2, "Account", heading_font)
+    ws.write(0, num_dates * 2 + 2+max_indent+1, "Transaction#", heading_font)
+    ws.write(0, num_dates * 2 + 2+max_indent+2, "Date", heading_font)
+    ws.write(0, num_dates * 2 + 2+max_indent+3, "Description", heading_font)
     ## Write date headings for balances
     for date_index in range(len(dates)):
         ws.write(1, date_index, dates[date_index], column_heading_style)
@@ -871,46 +905,112 @@ def write_balances_to_excel(transactions, dates):
     ws.set_panes_frozen(True)
     ws.set_horz_split_pos(2)
     ## Grab current balances for later manipulation
-    ## Want an array of date/line index -> value
-    account_names_dict = {}
-    indent_dict = {}
-    values_dict = defaultdict(int)
+    ## Now, each report "line" contains an account/balance
+    ## For each date, we have exactly same set of accounts.
+    ## Now for each txn in an a/c, we want to
+    ## add a line for txn before sub-accounts
+    ##
+    ## Need to keep track of things in terms of:
+    ## ac_idx - index into accounts
+    ## date_idx - index into dates
+    ## row_num - index into spreadsheet rows
+    ##
+    account_names_dict = {}       # acc_idx -> account-name
+    row_dict = defaultdict(int)   # acc_idx-> row_num
+    indent_dict = {}              # row_num -> line indentation
+    values_dict = defaultdict(int)# date_idx x row_num -> value
+    ##
     for date_index in range(len(dates)):
         date = dates[date_index]
-        line_index = 0
+        row = 2      # Start writing accounts/balances @ row 2
+        acc_index = 0
+        assert (len(balances_at[date])== num_lines), "Expected {} lines found {} on {}".format(num_lines, len(balances_at[date]), date)
         for line in balances_at[date]:
-            values_dict[(date_index, line_index)] = line.balance
+            print "acc_index:", acc_index, "indent:", line.indent, "row:", row
+            values_dict[(date_index, row)] = line.balance
             if date_index == 0:
-                account_names_dict[line_index] = line.account_name
-                indent_dict[line_index] = line.indent
+                account_names_dict[acc_index] = line.account_name
+                indent_dict[row] = line.indent
+                row_dict[acc_index] = row
             else:
                 ## Check lines have consistent account names/indentation
-                assert(account_names_dict[line_index] == line.account_name), "Expected name {} on line {}. found name {}".format(
-                    account_names_dict[line_index], line_index, line.account_name)
-                assert(indent_dict[line_index] == line.indent), "Expected indentation {} on line {}. found {}".format(
-                    indent_dict[line_index], line_index, line.indent)
-                assert (len(balances_at[date])== num_lines), "Expected {} lines found {} on {}".format(num_lines, len(balances_at[date]), date)
-            line_index += 1
-    line_index = 0
-    for line in range(num_lines):
+                assert(account_names_dict[acc_index] == line.account_name), "Expected name {} for a/c # {}. found name {}".format(
+                    account_names_dict[acc_index], acc_index, line.account_name)
+                assert(indent_dict[row] == line.indent), "Expected indentation {} on row {}. found {}".format(
+                    indent_dict[row], row, line.indent)
+                assert row_dict[acc_index] == row, "Expected row for a/c # {} to be {}. Was {}".format(acc_index, row_dict[acc_index], row)
+            for posting in line.postings:
+                row += 1
+                indent_dict[row] = line.indent + 1
+            row += 1
+            acc_index += 1
+    for acc_index in range(num_lines):
         ## Write a/c name
-        ws.write(line_index+2, num_dates * 2 + 2 + indent_dict[line_index],
-                 account_names_dict[line_index])
-        ## Set line indent
-        ws.row(line_index+2).level = indent_dict[line_index]
+        ws.write(row_dict[acc_index],
+                 num_dates * 2 + 2 + indent_dict[row_dict[acc_index]],
+                 account_names_dict[acc_index])
         ## Write balance at date
         for date_index in range(num_dates):
-            ws.write(line_index+2, date_index, values_dict[(date_index, line_index)] * 0.01, value_font)
+            ws.write(row_dict[acc_index], date_index, values_dict[(date_index, row_dict[acc_index])] * 0.01, value_font)
         ## Write balance differences
         for date_index in range(1, num_dates):
-            ws.write(line_index+2, date_index+num_dates,
-                     (values_dict[(date_index, line_index)]-values_dict[(date_index-1, line_index)]) * 0.01, value_font)
+            ws.write(row_dict[acc_index],
+                     date_index+num_dates,
+                     (values_dict[(date_index, row_dict[acc_index])]-values_dict[(date_index-1, row_dict[acc_index])]) * 0.01, value_font)
         ## Write total difference
         ## last-date - date[0]
-        ws.write(line_index+2, 2*num_dates,
-                 (values_dict[(num_dates-1, line_index)]-values_dict[(0, line_index)]) * 0.01, value_font)
-        line_index += 1
+        ws.write(row_dict[acc_index],
+                 2*num_dates,
+                 (values_dict[(num_dates-1, row_dict[acc_index])]-values_dict[(0, row_dict[acc_index])]) * 0.01, value_font)
+        ## For the postings at the final date:
+        postings = balances_at[dates[-1]][acc_index].postings
+        for p_index in range(len(postings)):
+            row = row_dict[acc_index] + p_index + 1
+            txn_id_col = num_dates * 2 + 2+max_indent+1
+            print "ac", acc_index, "row:", row_dict[acc_index] + p_index + 1, "txn:", postings[p_index].transaction_id
+            ws.write(row,
+                     txn_id_col,
+                     "txn:{}:".format(postings[p_index].transaction_id))
+            ws.write(row,
+                     txn_id_col+1,
+                     postings[p_index].date)
+            ws.write(row,
+                     txn_id_col+2,
+                     postings[p_index].comment)
+            ## Write total amount for each date
+            for date_index in range(len(dates)):
+                if postings[p_index].date <= dates[date_index]:
+                    ws.write(row, date_index, postings[p_index].amount['quantity'] * 0.01, value_font)
+                else:
+                    ws.write(row, date_index, 0, value_font)
+            ## Write difference amount for each date after first
+            for date_index in range(1, num_dates):
+                if postings[p_index].date > dates[date_index-1] and postings[p_index].date <= dates[date_index]:
+                    ws.write(row,
+                             date_index+num_dates,
+                             postings[p_index].amount['quantity'] * 0.01,
+                             value_font)
+                else:
+                    ws.write(row,
+                             date_index+num_dates,
+                             0,
+                             value_font)
+            ## Write "Total Difference" for final date
+            if postings[p_index].date > dates[0] and postings[p_index].date <= dates[-1]:
+                ws.write(row,
+                         2*num_dates,
+                         postings[p_index].amount['quantity'] * 0.01,
+                         value_font)
+            else:
+                ws.write(row,
+                         2*num_dates,
+                         0,
+                         value_font)
+    ## Set line indent
+    for row in sorted(indent_dict.keys()):
+        ws.row(row).level = indent_dict[row]
     wb.save('report.xls')
+
 
 def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
     """Print balances of accounts. Assumes only 1 unit/ccy per account.

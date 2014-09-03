@@ -24,7 +24,7 @@ Inspired by John Wiegley's Ledger:
 import argparse
 import sys
 import dateutil.parser
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 # {{{ Deal with columns of text
 
@@ -159,6 +159,15 @@ def extract_nil_or_single_unit_amount(amounts):
         return amounts.values()[0]
     elif (amounts == {}):
         return amounts
+    # else
+    raise ValueError("extract_nil_or_single_unit_amount: amounts contain >1 unit/ccy:", amounts)
+
+def extract_single_unit_quantity(amounts):
+    "Given a set of amounts, make sure there is zero or one currency/unit present and return the associated quantity."
+    if len(amounts.keys()) == 1:
+        return amounts.values()[0]['quantity']
+    elif (amounts == {}):
+        return 0
     # else
     raise ValueError("extract_nil_or_single_unit_amount: amounts contain >1 unit/ccy:", amounts)
 
@@ -760,6 +769,41 @@ def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent
             result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1, print_stars_for_org_mode)
     return result
 
+BalanceReportLine = namedtuple('account_name', 'balance', 'indent')
+
+def single_unit_report_helper(accounts_dict, account_names=None, prefix= "", indent=0):
+    """Internal.
+    Return list of (amount, account-name) string pairs showing a/c structure."""
+    result = []
+    if account_names:
+        ## XXX: Fix this, so it does something useful....
+        for account_name in account_names:
+            account = find_account(account_name, accounts_dict)
+            result += single_unit_report_helper({account['name']: account}, [],
+                                                  prefix=find_original_prefix(account_name, accounts_dict),
+                                                  indent=indent)
+        return result
+    ## else account_names = [] => print for all accounts
+    accounts =  accounts_dict.keys()
+    accounts.sort()
+    for account in accounts:
+        account_name = accounts_dict[account]['name']
+        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
+        balances  = accounts_dict[account]['balances']
+        has_own_postings = accounts_dict[account]['has_own_postings']
+        balance = extract_single_unit_quantity(balances)
+        if len(sub_accounts) == 0:
+            result.append(BalanceReportLine(account_name = prefix + account_name,
+                                            balance = balance,
+                                            indent = indent))
+        elif (len(sub_accounts) == 1 and not has_own_postings):
+            result += single_unit_report_helper(accounts_dict[account]['sub_accounts'], [], prefix+account_name+":", indent)
+        else:
+            result.append(BalanceReportLine(account_name = prefix + account_name,
+                                            balance = balance,
+                                            indent = indent))
+            result += single_unit_report_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1)
+    return result
 
 def validate_one_date_or_two(as_at_date, first_date, last_date):
     if (as_at_date):
@@ -784,6 +828,85 @@ def validate_one_date_or_two(as_at_date, first_date, last_date):
             sys.stderr.write("Error: last-date: %s specified, but first-date unspecified.\n"
                              "Exiting."%(last_date))
             sys.exit(-1)
+
+def write_balances_to_excel(transactions, dates):
+    ## XXX: Should allow list of accounts to be named.
+    dates = sorted(dates)
+    num_dates = len(dates)
+    ## Check we at least one date
+    if num_dates < 1:
+        ## XXX: Should print final balances if no dates specified
+        ## instead of dieing...
+        sys.stderr.write("No dates specified.\nExiting.")
+        sys.exit(-1)
+    ## Get sorted list of dates/accounts/balances for each date
+    balances_at = {}
+    for date in dates:
+        balances_at[date] = single_unit_report_helper(calculate_balances(transactions, date))
+    num_lines = len(balances_at[dates[0]])
+    ## Create Sheet
+    wb = Workbook()
+    ws = wb.add_sheet('Balances')
+    ## Create some fonts we'll need
+    heading_font = easyxf("font: bold on")
+    # Like accounting, but red for -ve numbers
+    value_font = easyxf('', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    # Put headings into worksheet
+    ws.write(0, 0, "Balances", heading_font)
+    ws.write(0, num_dates+1, "Differences", heading_font)
+    ws.write(0, num_dates * 2 + 2, "Account", heading_font)
+    ws.write(1, num_dates * 2, "Total", heading_font)
+    ## Write date headings for balances
+    for date_index in range(len(dates)):
+        ws.write(1, date_index, dates[date_index], heading_font)
+    ## Write date headings for balances
+    for date_index in range(1, len(dates)):
+        ws.write(1, date_index+num_dates, dates[date_index], heading_font)
+    ## Freeze Panes
+    ws.set_panes_frozen(True)
+    ws.set_horz_split_pos(2)
+    ## Grab current balances for later manipulation
+    ## Want an array of date/line index -> value
+    account_names_dict = {}
+    indent_dict = {}
+    values_dict = defaultdict(int)
+    for date_index in range(len(dates)):
+        date = dates[date_index]
+        line_index = 0
+        for line in balances_at[date]:
+            print "**", date_index, line_index, line.balance
+            values_dict[(date_index, line_index)] = line.balance
+            if date_index == 0:
+                account_names_dict[line_index] = line.account_name
+                indent_dict[line_index] = line.indent
+            else:
+                ## Check lines have consistent account names/indentation
+                assert(account_names_dict[line_index] == line.account_name), "Expected name {} on line {}. found name {}".format(
+                    account_names_dict[line_index], line_index, line.account_name)
+                assert(indent_dict[line_index] == line.indent), "Expected indentation {} on line {}. found {}".format(
+                    indent_dict[line_index], line_index, line.indent)
+                assert (len(balances_at[date])== num_lines), "Expected {} lines found {} on {}".format(num_lines, len(balances_at[date]), date)
+            line_index += 1
+    line_index = 0
+    for line in range(num_lines):
+        ## Write a/c name
+        ws.write(line_index+2, num_dates * 2 + 2 + indent_dict[line_index],
+                 account_names_dict[line_index])
+        ## Set line indent
+        ws.row(line_index+2).level = indent_dict[line_index]
+        ## Write balance at date
+        for date_index in range(num_dates):
+            ws.write(line_index+2, date_index, values_dict[(date_index, line_index)] * 0.01, value_font)
+        ## Write balance differences
+        for date_index in range(1, num_dates):
+            ws.write(line_index+2, date_index+num_dates,
+                     (values_dict[(date_index, line_index)]-values_dict[(date_index-1, line_index)]) * 0.01, value_font)
+        ## Write total difference
+        ## last-date - date[0]
+        ws.write(line_index+2, 2*num_dates,
+                 (values_dict[(num_dates-1, line_index)]-values_dict[(0, line_index)]) * 0.01, value_font)
+        line_index += 1
+    wb.save('report.xls')
 
 def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
     """Print balances of accounts. Assumes only 1 unit/ccy per account.

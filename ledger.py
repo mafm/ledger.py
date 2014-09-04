@@ -567,27 +567,31 @@ def extract_accounts(transactions):
 def print_accounts(accounts_dict):
     "Print chart of accounts represented in ACCOUNTS_DICT to stdout."
     for line in chart_of_accounts(accounts_dict):
-        print line
+        print "  "*line.indent, line.name
 
-def chart_of_accounts(accounts_dict, prefix= "", indent=""):
+AccountChartLine = namedtuple('AccountChartLine',
+                              ['name', 'indent'])
+
+def chart_of_accounts(accounts_dict, prefix = "", indent=0):
     """Return list of strings describing structure of accounts.
 
     accounts_dict represents hierachical structure of accounts."""
     result = []
-    accounts =  accounts_dict.keys()
-    accounts.sort()
-    for account in accounts:
-        account_name = accounts_dict[account]['name']
-        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
-        postings = accounts_dict[account]['own_postings']
+    account_names =  accounts_dict.keys()
+    account_names.sort()
+    for account_name in account_names:
+        account = accounts_dict[account_name]
+        sub_accounts = account.sub_accounts.keys()
 
         if len(sub_accounts) == 0:
-            result += [indent + prefix + account_name]
-        elif (len(sub_accounts) == 1 and not postings):
-            result += chart_of_accounts(accounts_dict[account]['sub_accounts'], prefix+account_name+":", indent)
+            result.append(AccountChartLine(name=prefix + account.original_name,
+                                           indent=indent))
+        elif (len(sub_accounts) == 1 and not account.postings):
+            result += chart_of_accounts(account.sub_accounts, prefix+account.original_name+":", indent)
         else:
-            result += [indent + prefix + account_name]
-            result += chart_of_accounts(accounts_dict[account]['sub_accounts'], "", indent+"  ")
+            result.append(AccountChartLine(name=prefix + account.original_name,
+                                           indent=indent))
+            result += chart_of_accounts(account.sub_accounts, "", indent+1)
     return result
 
 def account_string_components(account_string):
@@ -1050,6 +1054,12 @@ def write_excel_report(transactions, dates):
             ws.write(row, 2, p['amount']['quantity'] * 0.01, value_font)
             ws.write(row, 3, p['account'])
         row += 1
+    ## Chart of accounts
+    ws = wb.add_sheet('Account Structure')
+    row = 0
+    for line in chart_of_accounts(account_tree_from_transactions(input_transactions)):
+         ws.write(row, line.indent, line.name)
+         row+=1
     wb.save('report.xls')
 
 def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
@@ -1245,7 +1255,7 @@ def main():
 
     if (args.print_chart_of_accounts):
         for line in chart_of_accounts(account_tree_from_transactions(transactions)):
-            print line
+            print "  "*line.indent, line.name
 
     if (args.print_transactions):
         relevant_transactions = filter_by_date(transactions, args.first_date, args.last_date)

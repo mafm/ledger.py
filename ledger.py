@@ -26,6 +26,7 @@ import sys
 import dateutil.parser
 from collections import defaultdict, namedtuple
 import xlwt
+import os
 
 # {{{ Deal with columns of text
 
@@ -868,7 +869,7 @@ def validate_one_date_or_two(as_at_date, first_date, last_date):
                              "Exiting."%(last_date))
             sys.exit(-1)
 
-def write_excel_report(transactions, dates):
+def write_excel_report(transactions, dates, output_filename):
     TXN_COLOUR = 7
     ## XXX: Should allow list of accounts to be named.
     dates = sorted(dates)
@@ -1065,7 +1066,10 @@ def write_excel_report(transactions, dates):
     for line in chart_of_accounts(account_tree_from_transactions(input_transactions)):
          ws.write(row, line.indent, line.name)
          row+=1
-    wb.save('report.xls')
+    if not output_filename.endswith('.xls'):
+        output_filename += '.xls'
+    wb.save(output_filename)
+    sys.stderr.write("Wrote excel output to '{}'.\n".format(os.path.abspath(output_filename)))
 
 def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
     """Print balances of accounts. Assumes only 1 unit/ccy per account.
@@ -1213,11 +1217,27 @@ def main():
     parser.add_argument('--last-date', metavar='LAST-DATE',
                         help="ignore or don't report transactions after LAST-DATE")
 
+    parser.add_argument('--dates', metavar='DATES', nargs='+',
+                        help="print report based on these dates")
+
+    parser.add_argument('--generate-excel-report', metavar='EXCEL-FILENAME', nargs=1,
+                        help='Write output to an excel file.')
+
     args = parser.parse_args()
 
     parsed_file = parse_file(args.file, args.tweak_signs_of_input_amounts)
     transactions = parsed_file['transactions']
     verifications = parsed_file['verify-balances']
+
+    if args.generate_excel_report:
+        if not args.dates or len(args.dates) < 2:
+            sys.stderr.write("Invalid DATES: '{}'. Need at least *two* dates..\nExiting.\n".format(args.dates))
+            sys.exit(-1)
+        else:
+            write_excel_report(transactions, args.dates, args.generate_excel_report[0])
+
+    #if (args.print_register):
+    #    print_register(transactions, args.print_register, args.include_related_postings, args.reverse_print_order, args.first_date, args.last_date)
 
     if (args.as_at):
         if not is_valid_date(args.as_at):
@@ -1281,4 +1301,4 @@ def demo():
     parsed_file = parse_file("c:/Users/mafm/Desktop/working-directories/ledger.py-dev/test-data/kapsia.transactions", False)
     transactions = parsed_file['transactions']
     verifications = parsed_file['verify-balances']
-    write_excel_report(transactions, dates)
+    write_excel_report(transactions, dates, 'report')

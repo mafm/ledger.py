@@ -22,7 +22,19 @@ cd ledger.py
 ./ledger.py examples/sample.transactions --print-balances
 ./ledger.py examples/sample.transactions --print-register Expenses
 ./ledger.py examples/sample.transactions --print-register Expenses:Electricity
+
+# Generate a highly structured report in excel across multiple dates.
+./ledger.py examples/sample.transactions --generate-excel-report foo --dates 2012-12-31 2013-12-31
 ```
+
+I like the excel-report output. It's a lot more useful than plain text
+output. If you use this, note that you use the +/- buttons in the left
+margin to control the level of indentation displayed in the "Balances"
+sheet. Unfortunately, the output file is generated with all
+indentation levels opened, and the columns at default
+widths. Otherwise, I think it's pretty good, since it shows balances
+at dates, balance differences between dates, and how/when transactions
+affected the balances/differences.
 
 ## Outline
 

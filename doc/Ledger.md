@@ -42,7 +42,7 @@ I _really_ do not like the way [ledger](http://www.ledger-cli.org/) deals
 with ensuring transactions balance. Although
 [ledger](http://www.ledger-cli.org/)'s way of doing this is simple and
 neat, it makes things writing transactions unnecessarily confusing,
-especially for people who already know something about accounting.
+especially for people who already know something about bookkeeping.
 
 The basic rule of accounting is that transactions should obey the
 'accounting equation':

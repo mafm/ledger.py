@@ -1,8 +1,8 @@
 # Ledger.py: command-line, double-entry accounting in python
 
 **Ledger.py** is a simple, command-line, double-entry accounting
-system. It reads transactions written in a simple format from a
-text file and produces summary reports in text.
+system. It reads transactions written in a simple format from a text
+file and produces summary reports as text or an excel spreadsheet.
 
 Because transaction data is stored as text, it can be managed
 using a version control system like git. This makes it easy

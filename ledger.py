@@ -1116,7 +1116,12 @@ def calculate_register(transactions, account_string, include_related_postings, f
         first_posting_output = False
         for posting in transaction['postings']:
             if affects(posting, account_string):
-                book_posting(posting, account_tree)
+                book_posting(Posting(date=transaction['date'],
+                                         amount=posting['amount'],
+                                         account=posting['account'],
+                                         comment=transaction['description'],
+                                         transaction_id=None),
+                             account_tree)
             if (((not first_date) or (transaction['date'] >= first_date)) and
                 ((not last_date) or (transaction['date'] <= last_date))):
                 if not first_posting_output or (affects(posting, account_string) and not include_related_postings):
@@ -1126,7 +1131,7 @@ def calculate_register(transactions, account_string, include_related_postings, f
                     date_string = ""
                     description_string = ""
                 if affects(posting, account_string):
-                    balance_string = format_single_unit_amount(find_account(account_string, account_tree)['balances'])
+                    balance_string = format_single_unit_amount(find_account(account_string, account_tree).balances)
                 else:
                     balance_string = ""
                 if affects(posting, account_string) or include_related_postings:

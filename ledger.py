@@ -25,6 +25,7 @@ import argparse
 import sys
 import dateutil.parser
 from collections import defaultdict, namedtuple
+import xlwt
 
 # {{{ Deal with columns of text
 
@@ -858,7 +859,7 @@ def validate_one_date_or_two(as_at_date, first_date, last_date):
                              "Exiting."%(last_date))
             sys.exit(-1)
 
-def write_balances_to_excel(transactions, dates):
+def write_excel_report(transactions, dates):
     TXN_COLOUR = 7
     ## XXX: Should allow list of accounts to be named.
     dates = sorted(dates)
@@ -869,6 +870,7 @@ def write_balances_to_excel(transactions, dates):
         ## instead of dieing...
         sys.stderr.write("No dates specified.\nExiting.")
         sys.exit(-1)
+    input_transactions = transactions
     transactions = filter_by_date(transactions, last_date = dates[-1])
     ## Get sorted list of dates/accounts/balances for each date
     balances_at = {}
@@ -877,21 +879,23 @@ def write_balances_to_excel(transactions, dates):
         max_indent = max([line.indent for line in balances_at[date]])
     num_lines = len(balances_at[dates[0]])
     ## Create Sheet
-    wb = Workbook()
-    ws = wb.add_sheet('Balances')
+    wb = xlwt.Workbook()
+
     ## Create some fonts we'll need
-    heading_font = easyxf("font: bold on")
+    heading_font = xlwt.easyxf("font: bold on")
     ## Like accounting, but red for -ve numbers
-    value_font = easyxf('', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
-    txn_value_font = easyxf('pattern: pattern solid;', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    value_font = xlwt.easyxf('', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
+    txn_value_font = xlwt.easyxf('pattern: pattern solid;', '_-$* #,##0.00_-;[Red]-$* #,##0.00_-;_-$* "-"??_-;_-@_-')
     txn_value_font.pattern.pattern_fore_colour = TXN_COLOUR
-    txn_text_font = easyxf('pattern: pattern solid;')
+    txn_text_font = xlwt.easyxf('pattern: pattern solid;')
     txn_text_font.pattern.pattern_fore_colour = TXN_COLOUR
     ## Like heading, but right-aligned
-    column_heading_style = easyxf("font: bold on")
+    column_heading_style = xlwt.easyxf("font: bold on")
     alignment = xlwt.Alignment()
     alignment.horz = xlwt.Alignment.HORZ_RIGHT
     column_heading_style.alignment = alignment
+
+    ws = wb.add_sheet('Balances')
     # Put headings into worksheet
     ws.write(0, 0, "Balances", heading_font)
     ws.write(0, num_dates+1, "Differences", heading_font)
@@ -1025,8 +1029,28 @@ def write_balances_to_excel(transactions, dates):
     ## Set line indent
     for row in sorted(indent_dict.keys()):
         ws.row(row).level = indent_dict[row]
-    wb.save('report.xls')
 
+    ws = wb.add_sheet('Transactions')
+    # Put headings into worksheet
+    ws.write(0, 0, "Transaction#", heading_font)
+    ws.write(0, 1, "Date", heading_font)
+    ws.write(0, 2, "Amount", heading_font)
+    ws.write(0, 3, "Description/Account", heading_font)
+    ## Freeze Panes
+    ws.set_panes_frozen(True)
+    ws.set_horz_split_pos(1)
+    row = 1
+    for t_index in range(len(input_transactions)):
+        transaction = input_transactions[t_index]
+        ws.write(row, 0, "txn:{}:".format(t_index))
+        ws.write(row, 1, transaction['date'])
+        ws.write(row, 3, transaction['description'])
+        for p in transaction['postings']:
+            row += 1
+            ws.write(row, 2, p['amount']['quantity'] * 0.01, value_font)
+            ws.write(row, 3, p['account'])
+        row += 1
+    wb.save('report.xls')
 
 def print_single_unit_balances(transactions, account_names, print_stars_for_org_mode, as_at_date, first_date, last_date):
     """Print balances of accounts. Assumes only 1 unit/ccy per account.
@@ -1236,3 +1260,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def demo():
+    dates=['2013-06-30','2013-09-30','2013-12-31','2014-03-31','2014-06-30']
+    parsed_file = parse_file("c:/Users/mafm/Desktop/working-directories/ledger.py-dev/test-data/kapsia.transactions", False)
+    transactions = parsed_file['transactions']
+    verifications = parsed_file['verify-balances']
+    write_excel_report(transactions, dates)

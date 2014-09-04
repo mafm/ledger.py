@@ -390,7 +390,7 @@ def parse_first_line(line_number, line):
 def verify_balance(verification, account_tree, verbose):
     account_string = verification['account']
     amount = verification['amount']
-    actual_balances  = find_account(account_string, account_tree)['balances']
+    actual_balances  = find_account(account_string, account_tree).balances
 
     if (extract_single_unit_amount(actual_balances) == amount):
         if (verbose):
@@ -421,7 +421,12 @@ def verify_balances(transactions, verifications, verbose, exit_on_failure):
             verifications = verifications[1:]
 
         for posting in transaction['postings']:
-            book_posting(posting, account_tree)
+            book_posting(Posting(date=transaction['date'],
+                                 amount=posting['amount'],
+                                 account=posting['account'],
+                                 comment=transaction['description'],
+                                 transaction_id=None),
+                         account_tree)
 
     while len(verifications) > 0:
         verify_balance(verifications[0], account_tree, verbose)
@@ -783,10 +788,10 @@ def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent
     accounts.sort()
 
     for account in accounts:
-        account_name = accounts_dict[account]['name']
-        sub_accounts = accounts_dict[account]['sub_accounts'].keys()
-        balances  = accounts_dict[account]['balances']
-        has_own_postings = accounts_dict[account]['has_own_postings']
+        account_name = accounts_dict[account].original_name
+        sub_accounts = accounts_dict[account].sub_accounts.keys()
+        balances  = accounts_dict[account].balances
+        postings = accounts_dict[account].postings
         amount_string = format_nil_or_single_unit_amount(balances)
         if print_stars_for_org_mode:
             stars = ("*"*(indent+1))
@@ -794,11 +799,11 @@ def single_unit_balances_helper(accounts_dict, account_names, prefix= "", indent
             stars=""
         if len(sub_accounts) == 0:
             result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
-        elif (len(sub_accounts) == 1 and not has_own_postings):
-            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], prefix+account_name+":", indent, print_stars_for_org_mode)
+        elif (len(sub_accounts) == 1 and not postings):
+            result += single_unit_balances_helper(accounts_dict[account].sub_accounts, [], prefix+account_name+":", indent, print_stars_for_org_mode)
         else:
             result += [(stars, amount_string, (" " * (indent*2)) + prefix + account_name)]
-            result += single_unit_balances_helper(accounts_dict[account]['sub_accounts'], [], "", indent+1, print_stars_for_org_mode)
+            result += single_unit_balances_helper(accounts_dict[account].sub_accounts, [], "", indent+1, print_stars_for_org_mode)
     return result
 
 BalanceReportLine = namedtuple('BalanceReportLine', ['account_name', 'balance', 'indent', 'postings'])

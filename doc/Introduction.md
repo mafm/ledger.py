@@ -23,18 +23,19 @@ cd ledger.py
 ./ledger.py examples/sample.transactions --print-register Expenses
 ./ledger.py examples/sample.transactions --print-register Expenses:Electricity
 
-# Generate a highly structured report in excel across multiple dates.
+# Generate a highly structured report across multiple dates in an Excel-readable report
 ./ledger.py examples/sample.transactions --generate-excel-report foo --dates 2012-12-31 2013-12-31
 ```
 
-I like the excel-report output. It's a lot more useful than plain text
-output. If you use this, note that you use the +/- buttons in the left
-margin to control the level of indentation displayed in the "Balances"
-sheet. Unfortunately, the output file is generated with all
-indentation levels opened, and the columns at default
-widths. Otherwise, I think it's pretty good, since it shows balances
-at dates, balance differences between dates, and how/when transactions
-affected the balances/differences.
+I like the Excel-readable report output. It's a lot more useful than
+plain text output. If you try this out, note that you use the +/-
+buttons in the left margin control the level of indentation displayed
+in the "Balances" worksheet. Unfortunately, the Excel-readable output
+file is generated with all indentation levels opened, and the columns
+at default widths. Otherwise, I think it's pretty good. It shows:
+- balances at dates,
+- balance differences between dates, and
+- how/when transactions affected the balances/differences.
 
 ## Outline
 
@@ -44,10 +45,12 @@ The rest of this document is structured roughly like this:
   - [Other things that can appear in the input file](#other-things-that-can-appear-in-the-input-file)
      - [Instructions](#instructions)
 - [Reports](#reports)
-  - [Print Balances](#print-balances)
-  - [Print Register](#print-register)
-  - [Print Chart Of Accounts](#print-chart-of-accounts)
-  - [Print Transactions](#print-transactions)
+  - [Excel-readable Reports](#excel-readable-reports)
+  - [Reports in plain text](#reports-in-plain-text)
+    - [Print Balances](#print-balances)
+    - [Print Register](#print-register)
+    - [Print Chart Of Accounts](#print-chart-of-accounts)
+    - [Print Transactions](#print-transactions)
 
 ## The Input File
 
@@ -187,13 +190,31 @@ completely.
 
 ## Reports
 
-Ledger.py can generate reports from an input file using these main options:
+### Excel-readable Reports
+
+Ledger.py can generate an nicely formatted Excel-readable report using
+these options:
+
+
+```--generate-excel-report <output-filename> --dates <YYYY-MM-DD> <YYYY-MM-DD> ...```
+
+This generated report will include:
+- A "Balance Report" worksheet showing:
+  - the balance of each account at each specified date,
+  - differences between the specified dates, including a total difference between the last and first dates, and
+  - a list of the transactions affecting each account
+- An "Account Structure" worksheet showing the tree accounts named in the input file.
+- A "Transactions" worksheet list of all transactions, with details.
+
+### Reports in plain text
+
+Ledger.py can generate text reports from an input file using these main options:
 - --print-balances - show balances of accounts mentioned in the input file
 - --print-register - show a running balance for a specified account
 - --print-chart-of-accounts - show the current structure of the accounts
 - --print-transactions - print a re-formatted copy of the transactions in the input file
 
-### Print Balances
+#### Print Balances
 
 This shows the balances of the accounts listed in the input file with
 intelligent indentation that shows hierarchical structure within the
@@ -222,7 +243,7 @@ Examples:
 ./ledger.py examples/sample.transactions --print-balances  --print-balances expenses assets --first-date 2013-01-05 --last-date 2013-03-02
 ```
 
-### Print Register
+#### Print Register
 
 This shows the transactions affecting an account, and the running balance of that account as the transactions
 are encountered.
@@ -259,7 +280,7 @@ $ ./ledger.py examples/sample.transactions --print-register Expenses
 ```
 
 
-### Print Chart of Accounts
+#### Print Chart of Accounts
 
 This currently just shows the hierarchical structure of the accounts mentioned in the input file.
 

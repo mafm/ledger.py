@@ -85,8 +85,7 @@ have the desired effect):
       Liabilities:MasterCard  $10.00
 ```
 
-[Describing transactions in terms of debits and credits]
-(http://en.wikipedia.org/wiki/Debits_and_credits) _is_ pointlessly
+[Describing transactions in terms of debits and credits](http://en.wikipedia.org/wiki/Debits_and_credits) _is_ pointlessly
 confusing, but writing transactions using the normal accounting
 conventions (where an increase in a liability will balance an equal
 increase in an expense account) helps minimise confusion.
@@ -104,8 +103,7 @@ the Exxon transaction in the normal way, like this:
 ## Ledger is _way_ more complicated than ledger.py
 
 You probably can ignore most of the complexity if you don't need it,
-but [Ledger](http://www.ledger-cli.org/) is [much]
-(http://www.ledger-cli.org/3.0/doc/ledger3.html#Detailed-Options-Description)
+but [Ledger](http://www.ledger-cli.org/) is [*much*](http://www.ledger-cli.org/3.0/doc/ledger3.html#Detailed-Options-Description)
 [more](http://www.ledger-cli.org/3.0/doc/ledger3.html#Virtual-postings)
 [complicated](http://www.ledger-cli.org/3.0/doc/ledger3.html#Automated-Transactions)
 than ledger.py.

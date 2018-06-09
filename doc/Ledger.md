@@ -115,8 +115,7 @@ can't easily do with it.
 
 For example, ledger.py's --print-balances report can take two dates,
 and show the balances at those dates, and the changes between them.
-[There's no way to simple way to generate a report like that using ledger]
-(http://comments.gmane.org/gmane.comp.finance.ledger.general/4893), despite
+[There's no way to simple way to generate a report like that using ledger](http://comments.gmane.org/gmane.comp.finance.ledger.general/4893), despite
 [ledger](http://www.ledger-cli.org/)'s much greater complexity.
 
 I wanted to generate several reports that
